@@ -1,14 +1,17 @@
 import React from 'react';
-import { SafeAreaView, ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import AppText from '../../components/ui/AppText';
 import colors from '../../constants/colors';
 import GlassCard from '../../components/ui/GlassCard';
 
 export default function Profile() {
+  const insets = useSafeAreaInsets();
+
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={{ padding: 24 }}>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 128 }]}>
         <View style={styles.profileHead}><View style={styles.avatar}><Ionicons name="person-outline" size={30} color={colors.primary} /></View><View><AppText weight="bold" size={24}>Bishal</AppText><AppText style={styles.muted}>Health Profile</AppText></View><View style={styles.edit}><Ionicons name="options-outline" size={19} color={colors.primary} /></View></View>
         <GlassCard style={styles.score}><View style={styles.scoreRow}><View><AppText style={styles.eyebrow}>CURRENT HEALTH SCORE</AppText><AppText weight="bold" size={34}>83</AppText><AppText style={styles.muted}>You're building great momentum.</AppText></View><View style={styles.scoreRing}><Ionicons name="arrow-up" size={16} color={colors.success} /><AppText weight="semibold" style={styles.scorePercent}>6%</AppText></View></View></GlassCard>
         <AppText weight="semibold" size={18} style={styles.sectionTitle}>Your profile</AppText>
@@ -20,6 +23,7 @@ export default function Profile() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  content: { padding: 24 },
   profileHead: { flexDirection: 'row', alignItems: 'center', marginTop: 16 },
   avatar: { width: 72, height: 72, borderRadius: 24, backgroundColor: colors.mint, alignItems: 'center', justifyContent: 'center', marginRight: 15 },
   muted: { color: colors.secondaryText, fontSize: 12, marginTop: 3 },
