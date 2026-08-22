@@ -6,7 +6,7 @@ import shadows from '../../constants/shadows';
 
 export default function GlassCard({ children, style }) {
   return (
-    <BlurView intensity={40} tint="light" style={[styles.container, shadows.card, style]}>
+    <BlurView intensity={28} tint="light" experimentalBlurMethod="dimezisBlurView" style={[styles.container, shadows.card, style]}>
       <View style={styles.inner}>{children}</View>
     </BlurView>
   );
@@ -14,11 +14,13 @@ export default function GlassCard({ children, style }) {
 
 const styles = StyleSheet.create({
   container: {
-    borderRadius: 22,
+    borderRadius: 26,
     overflow: 'hidden',
-    backgroundColor: 'rgba(255,255,255,0.6)',
+    backgroundColor: colors.glassLight,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   inner: {
-    padding: 16,
+    padding: 20,
   },
 });

@@ -9,14 +9,17 @@ import colors from '../../constants/colors';
 
 const pages = [
   {
+    label: 'HEALTH INTELLIGENCE',
     title: 'Understand Your Body',
     subtitle: 'Get personalized insights based on your nutrition, activity and lifestyle.',
   },
   {
+    label: 'NOURISH YOURSELF',
     title: 'Eat Smarter',
     subtitle: 'Get AI-powered meal recommendations designed around your goals and preferences.',
   },
   {
+    label: 'BETTER EVERY DAY',
     title: 'Build Better Habits',
     subtitle: 'Track your water, meals, workouts and sleep while building lasting habits.',
   },
@@ -59,6 +62,7 @@ export default function Welcome() {
     <GradientBackground>
       <SafeAreaView style={{ flex: 1 }}>
         <View style={[styles.header, { paddingTop: insets.top, paddingHorizontal: 24 }]}>
+          <View style={styles.brandMark}><AppText weight="bold" size={16} style={styles.brandDot}>+</AppText></View>
           <AppText weight="semibold" size={20}>HealthAI</AppText>
         </View>
 
@@ -81,7 +85,8 @@ export default function Welcome() {
                 <View style={[styles.hero, { height: imageHeight }]}> 
                   <Image source={imageSource} style={[styles.image, { height: imageHeight }]} resizeMode="cover" />
                 </View>
-                <AppText style={styles.title} weight="semibold" size={26}>{p.title}</AppText>
+                <AppText weight="semibold" style={styles.label}>{p.label}</AppText>
+                <AppText style={styles.title} weight="bold" size={32}>{p.title}</AppText>
                 <AppText style={styles.subtitle}>{p.subtitle}</AppText>
               </View>
             ))}
@@ -94,7 +99,7 @@ export default function Welcome() {
               <View key={idx} style={[styles.dot, idx === page && styles.dotActive]} />
             ))}
           </View>
-          <PrimaryButton title={page === pages.length - 1 ? 'Get Started' : 'Next'} onPress={goNext} />
+          <PrimaryButton title={page === pages.length - 1 ? 'Get Started  →' : 'Continue  →'} onPress={goNext} />
         </View>
       </SafeAreaView>
     </GradientBackground>
@@ -102,14 +107,17 @@ export default function Welcome() {
 }
 
 const styles = StyleSheet.create({
-  header: { height: 56, justifyContent: 'center' },
+  header: { height: 56, justifyContent: 'center', flexDirection: 'row', alignItems: 'center', gap: 8 },
+  brandMark: { width: 28, height: 28, borderRadius: 10, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  brandDot: { color: '#fff', lineHeight: 20 },
   page: { justifyContent: 'flex-start' },
-  hero: { alignItems: 'center', marginBottom: 18 },
-  image: { width: '100%', borderRadius: 16, overflow: 'hidden', backgroundColor: colors.surface },
-  title: { textAlign: 'left', marginBottom: 12 },
-  subtitle: { color: colors.secondaryText, marginBottom: 16 },
+  hero: { alignItems: 'center', marginBottom: 22 },
+  image: { width: '100%', borderRadius: 28, overflow: 'hidden', backgroundColor: colors.surface },
+  label: { color: colors.primary, fontSize: 11, letterSpacing: 1.5, marginBottom: 8 },
+  title: { textAlign: 'left', marginBottom: 10, maxWidth: 320 },
+  subtitle: { color: colors.secondaryText, marginBottom: 16, lineHeight: 23, maxWidth: 340 },
   footer: { paddingTop: 12 },
   pagination: { flexDirection: 'row', justifyContent: 'center', marginBottom: 12 },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#E6EEF9', marginHorizontal: 6 },
-  dotActive: { backgroundColor: colors.primary },
+  dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#C9D4CC', marginHorizontal: 5 },
+  dotActive: { width: 24, backgroundColor: colors.primary },
 });

@@ -1,7 +1,9 @@
 import React from 'react';
-import { TouchableOpacity, ActivityIndicator, Text, StyleSheet } from 'react-native';
+import { TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import colors from '../../constants/colors';
 import spacing from '../../constants/spacing';
+import AppText from './AppText';
 
 export default function PrimaryButton({ title, onPress, style, loading, disabled }) {
   return (
@@ -11,20 +13,21 @@ export default function PrimaryButton({ title, onPress, style, loading, disabled
       disabled={disabled || loading}
       style={[styles.button, disabled && styles.disabled, style]}
     >
-      {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.text}>{title}</Text>}
+      <LinearGradient colors={[colors.primary, colors.primaryDark]} style={styles.fill}>
+        {loading ? <ActivityIndicator color="#fff" /> : <AppText weight="semibold" style={styles.text}>{title}</AppText>}
+      </LinearGradient>
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
   button: {
-    backgroundColor: colors.primary,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    borderRadius: 14,
+    borderRadius: 18,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  text: { color: '#fff', fontWeight: '600', fontSize: 16 },
+  fill: { width: '100%', minHeight: 56, paddingVertical: spacing.sm, paddingHorizontal: spacing.lg, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  text: { color: '#fff', fontSize: 16 },
   disabled: { opacity: 0.6 },
 });

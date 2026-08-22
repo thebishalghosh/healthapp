@@ -8,7 +8,7 @@ export default function AppText({ children, style, weight = 'regular', size }) {
   return (
     <Text
       style={[
-        { fontFamily: typography.fontFamily, fontSize, color: colors.text, fontWeight: typography.weights[weight] },
+        { fontFamily: typography.fontFamily, fontSize, color: colors.text, fontWeight: typography.weights[weight], lineHeight: size >= 28 ? size * 1.16 : size <= 12 ? 16 : size * 1.45 },
         style,
       ]}
     >

@@ -1,17 +1,20 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, TouchableOpacity, FlatList } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import AppText from '../../components/ui/AppText';
 import PrimaryButton from '../../components/ui/PrimaryButton';
+import GradientBackground from '../../components/ui/GradientBackground';
 import colors from '../../constants/colors';
 
 const options = [
-  'Build Muscle',
-  'Lose Weight',
-  'Improve Fitness',
-  'Eat Healthier',
-  'Build Healthy Habits',
-  'Improve Energy',
+  { title: 'Build Muscle', description: 'Build strength and lean mass', icon: 'barbell-outline' },
+  { title: 'Lose Weight', description: 'Move toward a healthier balance', icon: 'trending-down-outline' },
+  { title: 'Improve Fitness', description: 'Feel stronger in everyday life', icon: 'fitness-outline' },
+  { title: 'Eat Healthier', description: 'Make nourishment feel effortless', icon: 'nutrition-outline' },
+  { title: 'Build Healthy Habits', description: 'Create routines that last', icon: 'leaf-outline' },
+  { title: 'Improve Energy', description: 'Have more energy for your day', icon: 'sunny-outline' },
 ];
 
 export default function Goals() {
@@ -19,45 +22,58 @@ export default function Goals() {
   const router = useRouter();
 
   return (
-    <View style={styles.container}>
-      <AppText weight="bold" size={28} style={styles.title}>What is your main goal?</AppText>
-      <AppText style={styles.subtitle}>Choose what you want to focus on</AppText>
+    <GradientBackground>
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.header}>
+          <AppText weight="semibold" style={styles.eyebrow}>YOUR GOAL</AppText>
+          <AppText weight="bold" size={30} style={styles.title}>What do you want to{"\n"}focus on?</AppText>
+          <AppText style={styles.subtitle}>Choose your primary health goal and we'll personalize your experience around it.</AppText>
+        </View>
 
-      <FlatList
-        data={options}
-        numColumns={2}
-        keyExtractor={(i) => i}
-        contentContainerStyle={{ paddingTop: 20 }}
-        renderItem={({ item }) => {
-          const active = selected === item;
-          return (
-            <TouchableOpacity onPress={() => setSelected(item)} style={[styles.pill, active && styles.pillActive]}>
-              <AppText style={[styles.pillText, active && { color: '#fff' }]}>{item}</AppText>
-            </TouchableOpacity>
-          );
-        }}
-      />
+        <FlatList
+          data={options}
+          numColumns={2}
+          keyExtractor={(item) => item.title}
+          contentContainerStyle={styles.list}
+          columnWrapperStyle={styles.column}
+          renderItem={({ item }) => {
+            const active = selected === item.title;
+            return (
+              <TouchableOpacity onPress={() => setSelected(item.title)} style={[styles.card, active && styles.cardActive]} activeOpacity={0.84}>
+                <View style={styles.cardTop}>
+                  <View style={[styles.iconWrap, active && styles.iconWrapActive]}><Ionicons name={item.icon} size={21} color={active ? colors.primaryDark : colors.primary} /></View>
+                  {active ? <View style={styles.check}><Ionicons name="checkmark" size={14} color="#fff" /></View> : null}
+                </View>
+                <AppText weight="semibold" size={16} style={styles.cardTitle}>{item.title}</AppText>
+                <AppText style={styles.description}>{item.description}</AppText>
+              </TouchableOpacity>
+            );
+          }}
+        />
 
-      <View style={styles.footer}>
-        <PrimaryButton title="Continue" onPress={() => router.push('/(setup)/profile-setup')} disabled={!selected} />
-      </View>
-    </View>
+        <View style={styles.footer}>
+          <PrimaryButton title="Continue  →" onPress={() => router.push('/(setup)/profile-setup')} disabled={!selected} />
+        </View>
+      </SafeAreaView>
+    </GradientBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 24, backgroundColor: colors.background },
-  title: { marginTop: 24 },
-  subtitle: { color: colors.secondaryText, marginTop: 6 },
-  pill: {
-    flex: 1,
-    margin: 8,
-    paddingVertical: 14,
-    borderRadius: 16,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-  },
-  pillActive: { backgroundColor: colors.primary },
-  pillText: { color: colors.text },
-  footer: { marginTop: 'auto', marginBottom: 24 },
+  safeArea: { flex: 1 },
+  header: { paddingTop: 12, paddingBottom: 8 },
+  eyebrow: { color: colors.primary, fontSize: 10, letterSpacing: 1.5, marginBottom: 9 },
+  title: { lineHeight: 36 },
+  subtitle: { color: colors.secondaryText, marginTop: 9, lineHeight: 21 },
+  list: { paddingTop: 14, paddingBottom: 10 },
+  column: { justifyContent: 'space-between' },
+  card: { width: '47.5%', minHeight: 158, marginBottom: 12, padding: 15, borderRadius: 23, backgroundColor: colors.glassLight, borderWidth: 1, borderColor: colors.border, shadowColor: '#24493A', shadowOffset: { width: 0, height: 7 }, shadowOpacity: 0.06, shadowRadius: 15, elevation: 2 },
+  cardActive: { backgroundColor: 'rgba(216,240,230,0.82)', borderColor: colors.primary, shadowColor: colors.primary, shadowOpacity: 0.16, elevation: 4 },
+  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 17 },
+  iconWrap: { width: 43, height: 43, borderRadius: 15, backgroundColor: 'rgba(216,240,230,0.78)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.72)', alignItems: 'center', justifyContent: 'center' },
+  iconWrapActive: { backgroundColor: '#fff', borderColor: 'rgba(23,107,82,0.18)' },
+  check: { width: 24, height: 24, borderRadius: 9, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  cardTitle: { lineHeight: 21 },
+  description: { color: colors.secondaryText, fontSize: 11, lineHeight: 16, marginTop: 6 },
+  footer: { paddingTop: 8, paddingBottom: 12 },
 });

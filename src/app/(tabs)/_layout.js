@@ -1,8 +1,18 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
-import { StyleSheet, Platform } from 'react-native';
+import { StyleSheet, Platform, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import colors from '../../constants/colors';
+import shadows from '../../constants/shadows';
+
+function TabIcon({ name, color, focused }) {
+  return (
+    <View style={[styles.iconContainer, focused && styles.iconContainerActive]}>
+      <Ionicons name={name} size={22} color={color} />
+    </View>
+  );
+}
 
 export default function TabsLayout() {
   return (
@@ -10,14 +20,17 @@ export default function TabsLayout() {
       screenOptions={{
         headerShown: false,
         tabBarShowLabel: false,
-        tabBarStyle: [styles.tabBar, { backgroundColor: colors.surface }],
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.tertiaryText,
+        tabBarStyle: [styles.tabBar, { backgroundColor: 'transparent' }],
+        tabBarBackground: () => <BlurView intensity={42} tint="light" experimentalBlurMethod="dimezisBlurView" style={styles.blur} />,
       }}
     >
-      <Tabs.Screen name="index" options={{ tabBarIcon: ({ color }) => <Ionicons name="home-outline" size={22} color={color} /> }} />
-      <Tabs.Screen name="nutrition" options={{ tabBarIcon: ({ color }) => <Ionicons name="fast-food-outline" size={22} color={color} /> }} />
-      <Tabs.Screen name="workout" options={{ tabBarIcon: ({ color }) => <Ionicons name="barbell-outline" size={22} color={color} /> }} />
-      <Tabs.Screen name="ai" options={{ tabBarIcon: ({ color }) => <Ionicons name="sparkles-outline" size={22} color={color} /> }} />
-      <Tabs.Screen name="profile" options={{ tabBarIcon: ({ color }) => <Ionicons name="person-circle-outline" size={22} color={color} /> }} />
+      <Tabs.Screen name="index" options={{ tabBarIcon: ({ color, focused }) => <TabIcon name="home-outline" color={color} focused={focused} /> }} />
+      <Tabs.Screen name="nutrition" options={{ tabBarIcon: ({ color, focused }) => <TabIcon name="fast-food-outline" color={color} focused={focused} /> }} />
+      <Tabs.Screen name="workout" options={{ tabBarIcon: ({ color, focused }) => <TabIcon name="barbell-outline" color={color} focused={focused} /> }} />
+      <Tabs.Screen name="ai" options={{ tabBarIcon: ({ color, focused }) => <TabIcon name="sparkles-outline" color={color} focused={focused} /> }} />
+      <Tabs.Screen name="profile" options={{ tabBarIcon: ({ color, focused }) => <TabIcon name="person-circle-outline" color={color} focused={focused} /> }} />
     </Tabs>
   );
 }
@@ -29,12 +42,13 @@ const styles = StyleSheet.create({
     right: 20,
     bottom: Platform.OS === 'ios' ? 28 : 16,
     height: 64,
-    borderRadius: 32,
+    borderRadius: 28,
     paddingHorizontal: 12,
-    shadowColor: '#0b1724',
-    shadowOpacity: 0.06,
-    shadowOffset: { width: 0, height: 8 },
-    shadowRadius: 24,
-    elevation: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadows.floating,
   },
+  blur: { flex: 1, borderRadius: 28, overflow: 'hidden', backgroundColor: 'rgba(246,248,244,0.78)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.82)' },
+  iconContainer: { width: 42, height: 42, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
+  iconContainerActive: { backgroundColor: colors.mint, shadowColor: colors.primary, shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.15, shadowRadius: 7, elevation: 3 },
 });

@@ -1,16 +1,23 @@
 const colors = {
-  primary: '#1677FF',
-  deepBlue: '#0757D9',
-  cyan: '#36D9E8',
-  softCyan: '#B8F4F5',
-  background: '#F5F9FF',
+  primary: '#176B52',
+  primaryDark: '#0F4D3B',
+  mint: '#D8F0E6',
+  background: '#F6F8F4',
   surface: '#FFFFFF',
-  text: '#101828',
-  secondaryText: '#667085',
-  success: '#20C997',
-  warning: '#FFB020',
-  danger: '#FF5C5C',
-  translucent: 'rgba(255,255,255,0.6)'
+  text: '#17221D',
+  secondaryText: '#6D7972',
+  tertiaryText: '#A6B0AA',
+  success: '#3F9D78',
+  warning: '#D39A4A',
+  danger: '#C86D68',
+  blue: '#A9D8E4',
+  lavender: '#D8D4EE',
+  amber: '#F3D6A4',
+  glassLight: 'rgba(255,255,255,0.68)',
+  glassMedium: 'rgba(255,255,255,0.78)',
+  glassStrong: 'rgba(255,255,255,0.90)',
+  border: 'rgba(255,255,255,0.72)',
+  translucent: 'rgba(255,255,255,0.68)'
 };
 
 export default colors;
