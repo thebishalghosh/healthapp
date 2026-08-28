@@ -51,6 +51,10 @@ const api = {
   login: (body) => request('/auth/login', { method: 'POST', body }),
   logout: (token) => request('/auth/logout', { method: 'POST', token }),
   me: (token) => request('/auth/me', { token }),
+  getHealthProfile: (token) => request('/health/profile', { token }),
+  updateHealthProfile: (token, body) => request('/health/profile', { method: 'PUT', body, token }),
+  getNutrition: (token) => request('/health/nutrition', { token }),
+  calculateNutrition: (token) => request('/health/nutrition/calculate', { method: 'POST', token }),
 };
 
 export { ApiError, api };

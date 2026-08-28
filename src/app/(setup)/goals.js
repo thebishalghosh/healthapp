@@ -17,6 +17,15 @@ const options = [
   { title: 'Improve Energy', description: 'Have more energy for your day', icon: 'sunny-outline' },
 ];
 
+const goalValues = {
+  'Build Muscle': 'muscle_gain',
+  'Lose Weight': 'weight_loss',
+  'Improve Fitness': 'general_wellness',
+  'Eat Healthier': 'general_wellness',
+  'Build Healthy Habits': 'general_wellness',
+  'Improve Energy': 'general_wellness',
+};
+
 export default function Goals() {
   const [selected, setSelected] = useState(null);
   const router = useRouter();
@@ -52,7 +61,7 @@ export default function Goals() {
         />
 
         <View style={styles.footer}>
-          <PrimaryButton title="Continue  →" onPress={() => router.push('/(setup)/profile-setup')} disabled={!selected} />
+          <PrimaryButton title="Continue  →" onPress={() => router.push({ pathname: '/(setup)/profile-setup', params: { fitnessGoal: goalValues[selected] } })} disabled={!selected} />
         </View>
       </SafeAreaView>
     </GradientBackground>

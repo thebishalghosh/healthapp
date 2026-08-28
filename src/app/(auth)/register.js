@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import AppText from '../../components/ui/AppText';
 import PrimaryButton from '../../components/ui/PrimaryButton';
 import GradientBackground from '../../components/ui/GradientBackground';
@@ -9,8 +9,9 @@ import { useAuth } from '../../context/AuthContext';
 
 export default function Register() {
   const router = useRouter();
-  const { register } = useAuth();
-  const [fields, setFields] = useState({ firstName: '', lastName: '', email: '', password: '' });
+  const { register, updateProfile } = useAuth();
+  const { firstName: onboardingFirstName, profile: onboardingProfile } = useLocalSearchParams();
+  const [fields, setFields] = useState({ firstName: onboardingFirstName || '', lastName: '', email: '', password: '' });
   const [fieldErrors, setFieldErrors] = useState({});
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -29,6 +30,7 @@ export default function Register() {
     setSubmitting(true);
     try {
       await register(fields.email.trim(), fields.password, fields.firstName.trim(), fields.lastName.trim());
+      if (onboardingProfile) await updateProfile(JSON.parse(onboardingProfile));
       router.replace('/(tabs)');
     } catch (requestError) {
       if (requestError.fields) {
