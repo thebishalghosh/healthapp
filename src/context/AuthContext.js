@@ -3,6 +3,7 @@ import { api } from '../services/api';
 import tokenStorage from '../services/tokenStorage';
 import { normalizeProfile } from '../services/profile';
 import { normalizeNutrition } from '../services/nutrition';
+import { normalizeToday } from '../services/health';
 
 const AuthContext = createContext(null);
 
@@ -15,12 +16,16 @@ export function AuthProvider({ children }) {
   const [nutrition, setNutrition] = useState(null);
   const [nutritionLoading, setNutritionLoading] = useState(false);
   const [nutritionError, setNutritionError] = useState(null);
+  const [today, setToday] = useState(null);
+  const [todayLoading, setTodayLoading] = useState(false);
+  const [todayError, setTodayError] = useState(null);
 
   const clearSession = async () => {
     await tokenStorage.remove();
     setUser(null);
     setProfile(null);
     setNutrition(null);
+    setToday(null);
   };
 
   const refreshProfile = useCallback(async (providedToken) => {
@@ -92,6 +97,37 @@ export function AuthProvider({ children }) {
     return nextProfile;
   }, [calculateNutrition, refreshProfile]);
 
+  const refreshToday = useCallback(async () => {
+    const token = await tokenStorage.get();
+    if (!token) return null;
+    setTodayLoading(true);
+    setTodayError(null);
+    try {
+      const nextToday = normalizeToday(await api.getTodayHealth(token));
+      setToday(nextToday);
+      return nextToday;
+    } catch (error) {
+      setToday(null);
+      setTodayError(error);
+      if (error.status === 401 || error.code === 'UNAUTHENTICATED') await clearSession();
+      throw error;
+    } finally {
+      setTodayLoading(false);
+    }
+  }, []);
+
+  const trackHealth = useCallback(async (method, data) => {
+    const token = await tokenStorage.get();
+    if (!token) throw new Error('Authentication is required to track health data.');
+    await method(token, data);
+    return refreshToday();
+  }, [refreshToday]);
+
+  const addWater = useCallback((amountMl) => trackHealth(api.addWater, amountMl), [trackHealth]);
+  const addFood = useCallback((data) => trackHealth(api.addFood, data), [trackHealth]);
+  const addWorkout = useCallback((data) => trackHealth(api.addWorkout, data), [trackHealth]);
+  const addSleep = useCallback((data) => trackHealth(api.addSleep, data), [trackHealth]);
+
   const restoreSession = async () => {
     setLoading(true);
     try {
@@ -123,6 +159,7 @@ export function AuthProvider({ children }) {
     const currentUser = (await api.me(data.access_token)).user;
     setUser(currentUser);
     try { await refreshProfile(data.access_token); } catch (error) { }
+    try { await refreshToday(); } catch (error) { }
     return currentUser;
   };
 
@@ -158,7 +195,15 @@ export function AuthProvider({ children }) {
     nutritionError,
     refreshNutrition,
     calculateNutrition,
-  }), [user, profile, profileLoading, profileError, loading, updateProfile, nutrition, nutritionLoading, nutritionError, refreshNutrition, calculateNutrition]);
+    today,
+    todayLoading,
+    todayError,
+    refreshToday,
+    addWater,
+    addFood,
+    addWorkout,
+    addSleep,
+  }), [user, profile, profileLoading, profileError, loading, updateProfile, nutrition, nutritionLoading, nutritionError, refreshNutrition, calculateNutrition, today, todayLoading, todayError, refreshToday, addWater, addFood, addWorkout, addSleep]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

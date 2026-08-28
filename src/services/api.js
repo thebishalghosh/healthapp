@@ -55,6 +55,15 @@ const api = {
   updateHealthProfile: (token, body) => request('/health/profile', { method: 'PUT', body, token }),
   getNutrition: (token) => request('/health/nutrition', { token }),
   calculateNutrition: (token) => request('/health/nutrition/calculate', { method: 'POST', token }),
+  getTodayHealth: (token) => request('/health/today', { token }),
+  getWater: (token) => request('/health/water', { token }),
+  addWater: (token, amountMl) => request('/health/water', { method: 'POST', body: { amount_ml: amountMl }, token }),
+  getFood: (token) => request('/health/food', { token }),
+  addFood: (token, data) => request('/health/food', { method: 'POST', body: data, token }),
+  getWorkouts: (token) => request('/health/workouts', { token }),
+  addWorkout: (token, data) => request('/health/workouts', { method: 'POST', body: data, token }),
+  getSleep: (token) => request('/health/sleep', { token }),
+  addSleep: (token, data) => request('/health/sleep', { method: 'POST', body: data, token }),
 };
 
 export { ApiError, api };

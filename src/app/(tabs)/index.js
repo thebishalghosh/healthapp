@@ -1,8 +1,8 @@
-import React, { useEffect } from 'react';
-import { View, StyleSheet, ScrollView, Image, TouchableOpacity } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, View, StyleSheet, ScrollView, Image, TouchableOpacity, RefreshControl } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import AppText from '../../components/ui/AppText';
 import GlassCard from '../../components/ui/GlassCard';
 import colors from '../../constants/colors';
@@ -24,7 +24,9 @@ function ProfileValue({ label, value, suffix }) {
 export default function Home() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { user: account, profile, profileLoading, profileError, refreshProfile, nutrition, nutritionLoading, refreshNutrition } = useAuth();
+  const { user: account, profile, profileLoading, profileError, refreshProfile, nutritionLoading, today, todayLoading, todayError, refreshToday, calculateNutrition, addWater } = useAuth();
+  const [addingWater, setAddingWater] = useState(false);
+  const [waterError, setWaterError] = useState('');
   const firstName = account?.first_name || account?.firstName || '';
   const fullName = profile?.fullName || [account?.first_name, account?.last_name].filter(Boolean).join(' ') || null;
 
@@ -32,19 +34,27 @@ export default function Home() {
     if (!profile && !profileLoading && !profileError) refreshProfile().catch(() => {});
   }, [profile, profileLoading, profileError, refreshProfile]);
 
-  useEffect(() => {
-    if (profile) refreshNutrition().catch(() => {});
-  }, [refreshNutrition, profile]);
+  useFocusEffect(useCallback(() => {
+    refreshToday().catch(() => {});
+  }, [refreshToday]));
 
-  const nutritionCalories = nutrition?.caloriesTarget;
-  const nutritionWater = nutrition?.water === null || nutrition?.water === undefined ? null : nutrition.water / 1000;
-  const nutritionDetail = nutritionLoading ? 'Loading target' : nutritionCalories === null || nutritionCalories === undefined ? 'Target unavailable' : `0 / ${Math.round(nutritionCalories)} kcal`;
-  const waterDetail = nutritionLoading ? 'Loading target' : nutritionWater === null ? 'Target unavailable' : `0 / ${nutritionWater.toFixed(1)}L`;
+  const nutritionCalories = today?.nutrition?.caloriesTarget;
+  const nutritionDetail = todayLoading ? 'Loading today' : nutritionCalories === null || nutritionCalories === undefined ? 'Target unavailable' : `${Math.round(today.nutrition.caloriesConsumed || 0)} / ${Math.round(nutritionCalories)} kcal`;
+  const waterDetail = todayLoading ? 'Loading today' : today?.water?.targetMl === null || today?.water?.targetMl === undefined ? 'Target unavailable' : `${Math.round(today.water.consumedMl || 0)} / ${Math.round(today.water.targetMl)} ml`;
+  const workoutDetail = todayLoading ? 'Loading today' : today?.workout?.durationMinutes === null ? 'No workout logged' : `${today?.workout?.durationMinutes || 0} min · ${Math.round(today?.workout?.caloriesBurned || 0)} kcal`;
+  const sleepDetail = todayLoading ? 'Loading today' : today?.sleep?.durationMinutes ? `${Math.floor(today.sleep.durationMinutes / 60)}h ${today.sleep.durationMinutes % 60}m` : 'No sleep logged';
+  const nutritionMissing = today && (today.nutrition.caloriesTarget === null || today.nutrition.caloriesTarget === undefined);
+
+  const handleAddWater = async (amountMl) => {
+    setAddingWater(true);
+    setWaterError('');
+    try { await addWater(amountMl); } catch (error) { setWaterError(error.message || 'Unable to log water. Please try again.'); } finally { setAddingWater(false); }
+  };
 
   return (
     <GradientBackground style={styles.container} innerStyle={styles.backgroundContent}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-      <ScrollView style={styles.scroll} contentContainerStyle={[styles.content, { paddingTop: 10, paddingBottom: insets.bottom + 128 }]} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.scroll} refreshControl={<RefreshControl refreshing={todayLoading} onRefresh={refreshToday} tintColor={colors.primary} />} contentContainerStyle={[styles.content, { paddingTop: 10, paddingBottom: insets.bottom + 128 }]} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View><AppText style={styles.eyebrow}>THURSDAY, 22 AUGUST</AppText><AppText weight="semibold" size={24}>Good morning{firstName ? `, ${firstName}` : ''}</AppText><AppText style={styles.subtle}>Here's your health overview for today.</AppText></View>
           <View style={styles.avatar}><Ionicons name="person-outline" size={21} color={colors.primary} /></View>
@@ -52,6 +62,8 @@ export default function Home() {
 
         {profileLoading && !profile ? <ProfileSkeleton /> : null}
         {profileError && !profileLoading ? <GlassCard style={styles.profileCard}><AppText weight="semibold">We couldn't load your profile</AppText><AppText style={styles.subtle}>Your session is still active. Please try again.</AppText><PrimaryButton title="Retry" onPress={() => refreshProfile().catch(() => {})} style={styles.retryButton} /></GlassCard> : null}
+        {todayError && !todayLoading ? <GlassCard style={styles.profileCard}><AppText weight="semibold">{todayError.code === 'NUTRITION_STALE' ? 'Your health profile changed.' : todayError.status === 422 ? 'Complete your health profile.' : 'Today\'s health data is unavailable.'}</AppText><AppText style={styles.subtle}>{todayError.code === 'NUTRITION_STALE' ? 'Recalculate nutrition targets to continue.' : todayError.status === 422 ? 'Add the required details before using health tracking.' : 'Please try again.'}</AppText><PrimaryButton title={todayError.code === 'NUTRITION_STALE' ? 'Recalculate Targets' : todayError.status === 422 ? 'Complete Profile' : 'Retry'} onPress={todayError.code === 'NUTRITION_STALE' ? () => calculateNutrition().then(refreshToday).catch(() => {}) : todayError.status === 422 ? () => router.push('/edit-profile') : refreshToday} style={styles.retryButton} loading={nutritionLoading} /></GlassCard> : null}
+        {nutritionMissing && !todayError && !todayLoading ? <GlassCard style={styles.profileCard}><AppText weight="semibold">Your nutrition targets haven't been calculated yet.</AppText><AppText style={styles.subtle}>Calculate targets from your saved health profile.</AppText><PrimaryButton title="Calculate My Targets" onPress={() => calculateNutrition().then(refreshToday).catch(() => {})} style={styles.retryButton} loading={nutritionLoading} /></GlassCard> : null}
         {profile && !profileLoading ? <GlassCard style={styles.profileCard}><View style={styles.profileCardHeader}><View><AppText weight="semibold">Your profile</AppText><AppText style={styles.subtle}>{fullName || 'Complete your profile to personalize HealthAI.'}</AppText></View><AppText weight="bold" style={styles.completion}>{profile.completion}%</AppText></View><ProgressBar value={profile.completion / 100} color={colors.primary} /><View style={styles.profileGrid}><ProfileValue label="AGE" value={profile.age} suffix={profile.age === null ? '' : ' years'} /><ProfileValue label="GENDER" value={profile.gender} /><ProfileValue label="HEIGHT" value={profile.height} suffix={profile.height === null ? '' : ' cm'} /><ProfileValue label="WEIGHT" value={profile.weight} suffix={profile.weight === null ? '' : ' kg'} /><ProfileValue label="GOAL" value={profile.goal} /><ProfileValue label="ACTIVITY" value={profile.activityLevel} /></View>{profile.completion < 100 ? <TouchableOpacity onPress={() => router.push('/(setup)/profile-setup')}><AppText weight="semibold" style={styles.completeLink}>Complete Profile  →</AppText></TouchableOpacity> : null}</GlassCard> : null}
 
         <GlassCard style={styles.scoreCard}>
@@ -62,8 +74,8 @@ export default function Home() {
 
         <View style={styles.section}><SectionHeader eyebrow="Your rhythm" title="Today's goals" action="See all" />
             <View style={styles.goalGrid}>
-            {[{ label: 'Water', value: 0, detail: waterDetail, color: colors.blue, icon: 'water-outline' }, { label: 'Workout', value: 0.65, detail: '23 min left', color: colors.mint, icon: 'fitness-outline' }, { label: 'Nutrition', value: 0, detail: nutritionDetail, color: colors.amber, icon: 'nutrition-outline' }, { label: 'Sleep', value: 0.82, detail: '7h 24m', color: colors.lavender, icon: 'moon-outline' }].map((goal) => (
-              <View style={styles.goal} key={goal.label}><View style={[styles.goalIcon, { backgroundColor: goal.color }]}><Ionicons name={goal.icon} size={18} color={colors.text} /></View><AppText weight="semibold" style={styles.goalLabel}>{goal.label}</AppText><AppText style={styles.goalDetail}>{goal.detail}</AppText><ProgressBar value={goal.value} color={colors.primary} height={5} /></View>
+            {[{ label: 'Water', value: today?.water?.percentage ? today.water.percentage / 100 : 0, detail: waterDetail, color: colors.blue, icon: 'water-outline' }, { label: 'Workout', value: 0, detail: workoutDetail, color: colors.mint, icon: 'fitness-outline' }, { label: 'Nutrition', value: nutritionCalories ? Math.min(1, (today?.nutrition?.caloriesConsumed || 0) / nutritionCalories) : 0, detail: nutritionDetail, color: colors.amber, icon: 'nutrition-outline' }, { label: 'Sleep', value: 0, detail: sleepDetail, color: colors.lavender, icon: 'moon-outline' }].map((goal) => (
+              <View style={styles.goal} key={goal.label}><View style={[styles.goalIcon, { backgroundColor: goal.color }]}><Ionicons name={goal.icon} size={18} color={colors.text} /></View><AppText weight="semibold" style={styles.goalLabel}>{goal.label}</AppText><AppText style={styles.goalDetail}>{goal.detail}</AppText><ProgressBar value={goal.value} color={colors.primary} height={5} />{goal.label === 'Water' ? <View style={styles.waterActions}>{addingWater ? <ActivityIndicator size="small" color={colors.primary} /> : [250, 500, 750].map((amount) => <TouchableOpacity key={amount} activeOpacity={0.65} disabled={addingWater} onPress={() => handleAddWater(amount)} style={styles.waterButton}><AppText weight="semibold" style={styles.waterAction}>+{amount} ml</AppText></TouchableOpacity>)}</View> : null}{goal.label === 'Water' && waterError ? <AppText style={styles.waterError}>{waterError}</AppText> : null}</View>
             ))}
           </View>
         </View>
@@ -125,6 +137,10 @@ const styles = StyleSheet.create({
   goalIcon: { width: 34, height: 34, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 11 },
   goalLabel: { fontSize: 14 },
   goalDetail: { color: colors.secondaryText, fontSize: 11, marginTop: 4, marginBottom: 10 },
+  waterActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 8, alignItems: 'center' },
+  waterButton: { minHeight: 26, paddingHorizontal: 6, paddingVertical: 4, borderRadius: 9, backgroundColor: colors.mint },
+  waterAction: { color: colors.primary, fontSize: 10 },
+  waterError: { color: colors.danger, fontSize: 10, marginTop: 6 },
   insight: { marginTop: 26, backgroundColor: colors.mint },
   insightHeader: { flexDirection: 'row', alignItems: 'center' },
   aiIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', marginRight: 10 },
