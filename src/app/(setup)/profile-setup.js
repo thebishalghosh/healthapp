@@ -28,11 +28,7 @@ export default function ProfileSetup() {
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
-    setSubmitting(true);
-    // TODO: Replace this temporary development bypass with POST /api/v1/onboarding.
-    setTimeout(() => {
-      router.replace('/(tabs)');
-    }, 350);
+    router.push('/(auth)/register');
   };
 
   return (

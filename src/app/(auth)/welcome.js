@@ -1,5 +1,5 @@
 import React, { useRef, useState, useMemo } from 'react';
-import { View, StyleSheet, Image, ScrollView, useWindowDimensions, Image as RNImage } from 'react-native';
+import { View, StyleSheet, Image, ScrollView, useWindowDimensions, Image as RNImage, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import GradientBackground from '../../components/ui/GradientBackground';
@@ -100,6 +100,9 @@ export default function Welcome() {
             ))}
           </View>
           <PrimaryButton title={page === pages.length - 1 ? 'Get Started  →' : 'Continue  →'} onPress={goNext} />
+          <TouchableOpacity onPress={() => router.push('/(auth)/login')} style={styles.loginLink}>
+            <AppText weight="semibold" style={styles.loginText}>Already have an account? Sign in</AppText>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     </GradientBackground>
@@ -120,4 +123,6 @@ const styles = StyleSheet.create({
   pagination: { flexDirection: 'row', justifyContent: 'center', marginBottom: 12 },
   dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#C9D4CC', marginHorizontal: 5 },
   dotActive: { width: 24, backgroundColor: colors.primary },
+  loginLink: { alignItems: 'center', paddingTop: 14 },
+  loginText: { color: colors.primary, fontSize: 13 },
 });
