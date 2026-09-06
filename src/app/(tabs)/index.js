@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, View, StyleSheet, ScrollView, Image, TouchableOpacity, RefreshControl } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,12 +21,24 @@ function ProfileValue({ label, value, suffix }) {
   return <View style={styles.profileField}><AppText style={styles.profileLabel}>{label}</AppText><AppText weight="semibold" style={styles.profileValue}>{value === null || value === undefined ? 'Not added yet' : `${value}${suffix || ''}`}</AppText></View>;
 }
 
+function NutritionValue({ label, value, unit }) {
+  return <View style={styles.aiNutritionValue}><AppText style={styles.aiNutritionLabel}>{label}</AppText><AppText weight="semibold" style={styles.aiNutritionNumber}>{value === null || value === undefined ? '—' : `${Math.round(value * 10) / 10} ${unit}`}</AppText></View>;
+}
+
+function hasNutrition(recommendation) {
+  return Object.values(recommendation?.estimatedNutrition || {}).some((value) => value !== null && value !== undefined);
+}
+
 export default function Home() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { user: account, profile, profileLoading, profileError, refreshProfile, nutritionLoading, today, todayLoading, todayError, refreshToday, calculateNutrition, addWater } = useAuth();
+  const { user: account, profile, profileLoading, profileError, refreshProfile, nutritionLoading, today, todayLoading, todayError, refreshToday, calculateNutrition, addWater, getRecommendationHistory } = useAuth();
   const [addingWater, setAddingWater] = useState(false);
   const [waterError, setWaterError] = useState('');
+  const [aiHistory, setAIHistory] = useState([]);
+  const [aiHistoryLoading, setAIHistoryLoading] = useState(false);
+  const [aiHistoryError, setAIHistoryError] = useState(false);
+  const aiHistoryRequestId = useRef(0);
   const firstName = account?.first_name || account?.firstName || '';
   const fullName = profile?.fullName || [account?.first_name, account?.last_name].filter(Boolean).join(' ') || null;
 
@@ -38,8 +50,37 @@ export default function Home() {
     refreshToday().catch(() => {});
   }, [refreshToday]));
 
+  const loadAIHistory = useCallback(async () => {
+    const requestId = aiHistoryRequestId.current + 1;
+    aiHistoryRequestId.current = requestId;
+    setAIHistoryLoading(true);
+    setAIHistoryError(false);
+    try {
+      const nextHistory = await getRecommendationHistory(20, 0);
+      if (requestId === aiHistoryRequestId.current) setAIHistory(nextHistory);
+    } catch (error) {
+      if (requestId === aiHistoryRequestId.current) setAIHistoryError(true);
+    } finally {
+      if (requestId === aiHistoryRequestId.current) setAIHistoryLoading(false);
+    }
+  }, [getRecommendationHistory]);
+
+  useFocusEffect(useCallback(() => {
+    loadAIHistory();
+  }, [loadAIHistory, account?.id, account?.email]));
+
+  useEffect(() => {
+    aiHistoryRequestId.current += 1;
+    setAIHistory([]);
+    setAIHistoryError(false);
+  }, [account?.id, account?.email]);
+
+  const latestGeneration = aiHistory[0];
+  const latestRecommendation = latestGeneration?.recommendations?.find((recommendation) => recommendation.mealType === 'main_meal' && hasNutrition(recommendation)) || latestGeneration?.recommendations?.find(hasNutrition);
+  const latestNutrition = latestRecommendation?.estimatedNutrition || {};
   const nutritionCalories = today?.nutrition?.caloriesTarget;
-  const nutritionDetail = todayLoading ? 'Loading today' : nutritionCalories === null || nutritionCalories === undefined ? 'Target unavailable' : `${Math.round(today.nutrition.caloriesConsumed || 0)} / ${Math.round(nutritionCalories)} kcal`;
+  const caloriesConsumed = today?.nutrition?.caloriesConsumed;
+  const nutritionDetail = todayLoading ? 'Loading nutrition' : nutritionCalories === null || nutritionCalories === undefined ? 'Target unavailable' : `${Math.round(caloriesConsumed || 0)} / ${Math.round(nutritionCalories)} kcal`;
   const waterDetail = todayLoading ? 'Loading today' : today?.water?.targetMl === null || today?.water?.targetMl === undefined ? 'Target unavailable' : `${Math.round(today.water.consumedMl || 0)} / ${Math.round(today.water.targetMl)} ml`;
   const workoutDetail = todayLoading ? 'Loading today' : today?.workout?.durationMinutes === null ? 'No workout logged' : `${today?.workout?.durationMinutes || 0} min · ${Math.round(today?.workout?.caloriesBurned || 0)} kcal`;
   const sleepDetail = todayLoading ? 'Loading today' : today?.sleep?.durationMinutes ? `${Math.floor(today.sleep.durationMinutes / 60)}h ${today.sleep.durationMinutes % 60}m` : 'No sleep logged';
@@ -54,7 +95,7 @@ export default function Home() {
   return (
     <GradientBackground style={styles.container} innerStyle={styles.backgroundContent}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-      <ScrollView style={styles.scroll} refreshControl={<RefreshControl refreshing={todayLoading} onRefresh={refreshToday} tintColor={colors.primary} />} contentContainerStyle={[styles.content, { paddingTop: 10, paddingBottom: insets.bottom + 128 }]} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.scroll} refreshControl={<RefreshControl refreshing={todayLoading} onRefresh={() => refreshToday().catch(() => {})} tintColor={colors.primary} />} contentContainerStyle={[styles.content, { paddingTop: 10, paddingBottom: insets.bottom + 128 }]} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View><AppText style={styles.eyebrow}>THURSDAY, 22 AUGUST</AppText><AppText weight="semibold" size={24}>Good morning{firstName ? `, ${firstName}` : ''}</AppText><AppText style={styles.subtle}>Here's your health overview for today.</AppText></View>
           <View style={styles.avatar}><Ionicons name="person-outline" size={21} color={colors.primary} /></View>
@@ -74,17 +115,13 @@ export default function Home() {
 
         <View style={styles.section}><SectionHeader eyebrow="Your rhythm" title="Today's goals" action="See all" />
             <View style={styles.goalGrid}>
-            {[{ label: 'Water', value: today?.water?.percentage ? today.water.percentage / 100 : 0, detail: waterDetail, color: colors.blue, icon: 'water-outline' }, { label: 'Workout', value: 0, detail: workoutDetail, color: colors.mint, icon: 'fitness-outline' }, { label: 'Nutrition', value: nutritionCalories ? Math.min(1, (today?.nutrition?.caloriesConsumed || 0) / nutritionCalories) : 0, detail: nutritionDetail, color: colors.amber, icon: 'nutrition-outline' }, { label: 'Sleep', value: 0, detail: sleepDetail, color: colors.lavender, icon: 'moon-outline' }].map((goal) => (
+            {[{ label: 'Water', value: today?.water?.percentage ? today.water.percentage / 100 : 0, detail: waterDetail, color: colors.blue, icon: 'water-outline' }, { label: 'Workout', value: 0, detail: workoutDetail, color: colors.mint, icon: 'fitness-outline' }, { label: 'Nutrition', value: nutritionCalories ? Math.min(1, (caloriesConsumed || 0) / nutritionCalories) : 0, detail: nutritionDetail, color: colors.amber, icon: 'nutrition-outline' }, { label: 'Sleep', value: 0, detail: sleepDetail, color: colors.lavender, icon: 'moon-outline' }].map((goal) => (
               <View style={styles.goal} key={goal.label}><View style={[styles.goalIcon, { backgroundColor: goal.color }]}><Ionicons name={goal.icon} size={18} color={colors.text} /></View><AppText weight="semibold" style={styles.goalLabel}>{goal.label}</AppText><AppText style={styles.goalDetail}>{goal.detail}</AppText><ProgressBar value={goal.value} color={colors.primary} height={5} />{goal.label === 'Water' ? <View style={styles.waterActions}>{addingWater ? <ActivityIndicator size="small" color={colors.primary} /> : [250, 500, 750].map((amount) => <TouchableOpacity key={amount} activeOpacity={0.65} disabled={addingWater} onPress={() => handleAddWater(amount)} style={styles.waterButton}><AppText weight="semibold" style={styles.waterAction}>+{amount} ml</AppText></TouchableOpacity>)}</View> : null}{goal.label === 'Water' && waterError ? <AppText style={styles.waterError}>{waterError}</AppText> : null}</View>
             ))}
           </View>
         </View>
 
-        <GlassCard style={styles.insight}>
-          <View style={styles.insightHeader}><View style={styles.aiIcon}><Ionicons name="sparkles" size={17} color={colors.primary} /></View><AppText weight="semibold">AI insight</AppText></View>
-          <AppText style={styles.insightText}>You're close to your hydration goal. Try drinking another 500ml this afternoon.</AppText>
-          <AppText weight="semibold" style={styles.link}>View recommendation  →</AppText>
-        </GlassCard>
+        <GlassCard style={styles.insight}><View style={styles.insightHeader}><View style={styles.aiIcon}><Ionicons name="sparkles" size={17} color={colors.primary} /></View><AppText weight="semibold">Latest AI Recommendation</AppText></View>{aiHistoryLoading ? <AppText style={styles.subtle}>Loading saved nutrition summary...</AppText> : aiHistoryError ? <AppText style={styles.subtle}>AI nutrition summary unavailable</AppText> : latestRecommendation ? <><AppText weight="semibold" style={styles.recommendationTitle}>{latestRecommendation.title}</AppText><AppText style={styles.recommendationMeta}>{latestRecommendation.mealType.replace(/_/g, ' ')}</AppText><View style={styles.aiNutritionGrid}><NutritionValue label="Calories" value={latestNutrition.calories} unit="kcal" /><NutritionValue label="Protein" value={latestNutrition.proteinG} unit="g" /><NutritionValue label="Carbohydrates" value={latestNutrition.carbohydratesG} unit="g" /><NutritionValue label="Fat" value={latestNutrition.fatG} unit="g" /><NutritionValue label="Fiber" value={latestNutrition.fiberG} unit="g" /></View></> : aiHistory.length === 0 ? <AppText style={styles.subtle}>Generate your first AI meal recommendation</AppText> : <AppText style={styles.subtle}>AI nutrition summary unavailable</AppText>}</GlassCard>
 
         <View style={styles.movementCard}>
           <Image source={require('../../../assets/images/exercise-2.jpg')} style={styles.movementImage} resizeMode="cover" />
@@ -145,6 +182,15 @@ const styles = StyleSheet.create({
   insightHeader: { flexDirection: 'row', alignItems: 'center' },
   aiIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', marginRight: 10 },
   insightText: { color: colors.text, lineHeight: 22, marginTop: 12 },
+  recommendationTitle: { marginTop: 14, lineHeight: 21 },
+  recommendationMeta: { color: colors.secondaryText, fontSize: 11, marginTop: 8, textTransform: 'capitalize' },
+  foodList: { marginTop: 8 },
+  foodItem: { color: colors.secondaryText, fontSize: 12, lineHeight: 19 },
+  recommendationReason: { color: colors.secondaryText, fontSize: 12, lineHeight: 19, marginTop: 10 },
+  aiNutritionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, marginTop: 18, paddingTop: 14, borderTopWidth: 1, borderTopColor: colors.border },
+  aiNutritionValue: { width: '28%' },
+  aiNutritionLabel: { color: colors.secondaryText, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.8 },
+  aiNutritionNumber: { marginTop: 4, fontSize: 14 },
   link: { color: colors.primary, fontSize: 13, marginTop: 14 },
   movementCard: { height: 184, borderRadius: 26, overflow: 'hidden', marginTop: 20 },
   movementImage: { ...StyleSheet.absoluteFillObject, width: undefined, height: undefined },

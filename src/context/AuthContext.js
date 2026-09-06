@@ -4,6 +4,7 @@ import tokenStorage from '../services/tokenStorage';
 import { normalizeProfile } from '../services/profile';
 import { normalizeNutrition } from '../services/nutrition';
 import { normalizeToday } from '../services/health';
+import { normalizeAIUsage, normalizeHistory, normalizeRecommendations } from '../services/recommendations';
 
 const AuthContext = createContext(null);
 
@@ -19,6 +20,9 @@ export function AuthProvider({ children }) {
   const [today, setToday] = useState(null);
   const [todayLoading, setTodayLoading] = useState(false);
   const [todayError, setTodayError] = useState(null);
+  const [recommendations, setRecommendations] = useState(null);
+  const [recommendationsLoading, setRecommendationsLoading] = useState(false);
+  const [recommendationsError, setRecommendationsError] = useState(null);
 
   const clearSession = async () => {
     await tokenStorage.remove();
@@ -26,6 +30,7 @@ export function AuthProvider({ children }) {
     setProfile(null);
     setNutrition(null);
     setToday(null);
+    setRecommendations(null);
   };
 
   const refreshProfile = useCallback(async (providedToken) => {
@@ -116,6 +121,37 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
+  const refreshRecommendations = useCallback(async () => {
+    const token = await tokenStorage.get();
+    if (!token) return null;
+    setRecommendationsLoading(true);
+    setRecommendationsError(null);
+    try {
+      const nextRecommendations = normalizeRecommendations(await api.getFoodRecommendations(token));
+      setRecommendations(nextRecommendations);
+      return nextRecommendations;
+    } catch (error) {
+      setRecommendations(null);
+      setRecommendationsError(error);
+      if (error.status === 401 || error.code === 'UNAUTHENTICATED') await clearSession();
+      throw error;
+    } finally {
+      setRecommendationsLoading(false);
+    }
+  }, []);
+
+  const getRecommendationHistory = useCallback(async (limit = 20, offset = 0) => {
+    const token = await tokenStorage.get();
+    if (!token) return [];
+    return normalizeHistory(await api.getFoodRecommendationHistory(token, limit, offset));
+  }, []);
+
+  const getAIUsage = useCallback(async () => {
+    const token = await tokenStorage.get();
+    if (!token) return null;
+    return normalizeAIUsage(await api.getAIUsage(token));
+  }, []);
+
   const trackHealth = useCallback(async (method, data) => {
     const token = await tokenStorage.get();
     if (!token) throw new Error('Authentication is required to track health data.');
@@ -199,11 +235,17 @@ export function AuthProvider({ children }) {
     todayLoading,
     todayError,
     refreshToday,
+    recommendations,
+    recommendationsLoading,
+    recommendationsError,
+    refreshRecommendations,
+    getRecommendationHistory,
+    getAIUsage,
     addWater,
     addFood,
     addWorkout,
     addSleep,
-  }), [user, profile, profileLoading, profileError, loading, updateProfile, nutrition, nutritionLoading, nutritionError, refreshNutrition, calculateNutrition, today, todayLoading, todayError, refreshToday, addWater, addFood, addWorkout, addSleep]);
+  }), [user, profile, profileLoading, profileError, loading, updateProfile, nutrition, nutritionLoading, nutritionError, refreshNutrition, calculateNutrition, today, todayLoading, todayError, refreshToday, recommendations, recommendationsLoading, recommendationsError, refreshRecommendations, getRecommendationHistory, getAIUsage, addWater, addFood, addWorkout, addSleep]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
