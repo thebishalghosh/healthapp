@@ -12,6 +12,8 @@ import { user, todaysPlan } from '../../data/mockData';
 import GradientBackground from '../../components/ui/GradientBackground';
 import PrimaryButton from '../../components/ui/PrimaryButton';
 import { useAuth } from '../../context/AuthContext';
+import { api } from '../../services/api';
+import tokenStorage from '../../services/tokenStorage';
 
 function ProfileSkeleton() {
   return <GlassCard style={styles.profileCard}><View style={styles.skeletonLine} /><View style={styles.skeletonLineShort} /><View style={styles.profileGrid}>{[1, 2, 3, 4].map((item) => <View key={item} style={styles.skeletonField}><View style={styles.skeletonLabel} /><View style={styles.skeletonValue} /></View>)}</View></GlassCard>;
@@ -29,6 +31,31 @@ function hasNutrition(recommendation) {
   return Object.values(recommendation?.estimatedNutrition || {}).some((value) => value !== null && value !== undefined);
 }
 
+function GoalCard({ children, onPress }) {
+  if (onPress) return <TouchableOpacity activeOpacity={0.82} onPress={onPress} style={styles.goal}>{children}</TouchableOpacity>;
+  return <View style={styles.goal}>{children}</View>;
+}
+
+function formatCurrentLocalDate() {
+  const currentDate = new Date();
+  return {
+    day: currentDate.toLocaleDateString(undefined, { weekday: 'long' }),
+    date: currentDate.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' }),
+  };
+}
+
+function normalizeStreak(response) {
+  const source = response?.streak || response || {};
+  const weeklyProgress = Array.isArray(source.weekly_progress) ? source.weekly_progress : [];
+  const completedDays = weeklyProgress.filter((day) => day?.completed === true).length;
+  return {
+    currentStreak: source.current_streak === null || source.current_streak === undefined ? null : Number(source.current_streak),
+    weeklyProgress,
+    completedDays,
+    achievements: Array.isArray(source.achievements) ? source.achievements : [],
+  };
+}
+
 export default function Home() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -38,6 +65,9 @@ export default function Home() {
   const [aiHistory, setAIHistory] = useState([]);
   const [aiHistoryLoading, setAIHistoryLoading] = useState(false);
   const [aiHistoryError, setAIHistoryError] = useState(false);
+  const [streak, setStreak] = useState(null);
+  const [streakLoading, setStreakLoading] = useState(false);
+  const [streakError, setStreakError] = useState('');
   const aiHistoryRequestId = useRef(0);
   const firstName = account?.first_name || account?.firstName || '';
   const fullName = profile?.fullName || [account?.first_name, account?.last_name].filter(Boolean).join(' ') || null;
@@ -69,6 +99,25 @@ export default function Home() {
     loadAIHistory();
   }, [loadAIHistory, account?.id, account?.email]));
 
+  const loadStreak = useCallback(async () => {
+    const token = await tokenStorage.get();
+    if (!token) return;
+    setStreakLoading(true);
+    setStreakError('');
+    try {
+      setStreak(normalizeStreak(await api.getHealthStreak(token)));
+    } catch (error) {
+      setStreak(null);
+      setStreakError(error.message || 'Unable to load your streak. Please try again.');
+    } finally {
+      setStreakLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(useCallback(() => {
+    loadStreak();
+  }, [loadStreak, account?.id, account?.email]));
+
   useEffect(() => {
     aiHistoryRequestId.current += 1;
     setAIHistory([]);
@@ -85,6 +134,7 @@ export default function Home() {
   const workoutDetail = todayLoading ? 'Loading today' : today?.workout?.durationMinutes === null ? 'No workout logged' : `${today?.workout?.durationMinutes || 0} min · ${Math.round(today?.workout?.caloriesBurned || 0)} kcal`;
   const sleepDetail = todayLoading ? 'Loading today' : today?.sleep?.durationMinutes ? `${Math.floor(today.sleep.durationMinutes / 60)}h ${today.sleep.durationMinutes % 60}m` : 'No sleep logged';
   const nutritionMissing = today && (today.nutrition.caloriesTarget === null || today.nutrition.caloriesTarget === undefined);
+  const currentLocalDate = formatCurrentLocalDate();
 
   const handleAddWater = async (amountMl) => {
     setAddingWater(true);
@@ -95,9 +145,9 @@ export default function Home() {
   return (
     <GradientBackground style={styles.container} innerStyle={styles.backgroundContent}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-      <ScrollView style={styles.scroll} refreshControl={<RefreshControl refreshing={todayLoading} onRefresh={() => refreshToday().catch(() => {})} tintColor={colors.primary} />} contentContainerStyle={[styles.content, { paddingTop: 10, paddingBottom: insets.bottom + 128 }]} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.scroll} refreshControl={<RefreshControl refreshing={todayLoading || streakLoading} onRefresh={() => Promise.all([refreshToday(), loadStreak()]).catch(() => {})} tintColor={colors.primary} />} contentContainerStyle={[styles.content, { paddingTop: 10, paddingBottom: insets.bottom + 128 }]} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <View><AppText style={styles.eyebrow}>THURSDAY, 22 AUGUST</AppText><AppText weight="semibold" size={24}>Good morning{firstName ? `, ${firstName}` : ''}</AppText><AppText style={styles.subtle}>Here's your health overview for today.</AppText></View>
+          <View><AppText style={styles.eyebrow}>{currentLocalDate.day}</AppText><AppText style={styles.dateLine}>{currentLocalDate.date}</AppText><AppText weight="semibold" size={24}>Good morning{firstName ? `, ${firstName}` : ''}</AppText><AppText style={styles.subtle}>Here's your health overview for today.</AppText></View>
           <View style={styles.avatar}><Ionicons name="person-outline" size={21} color={colors.primary} /></View>
         </View>
 
@@ -116,10 +166,12 @@ export default function Home() {
         <View style={styles.section}><SectionHeader eyebrow="Your rhythm" title="Today's goals" action="See all" />
             <View style={styles.goalGrid}>
             {[{ label: 'Water', value: today?.water?.percentage ? today.water.percentage / 100 : 0, detail: waterDetail, color: colors.blue, icon: 'water-outline' }, { label: 'Workout', value: 0, detail: workoutDetail, color: colors.mint, icon: 'fitness-outline' }, { label: 'Nutrition', value: nutritionCalories ? Math.min(1, (caloriesConsumed || 0) / nutritionCalories) : 0, detail: nutritionDetail, color: colors.amber, icon: 'nutrition-outline' }, { label: 'Sleep', value: 0, detail: sleepDetail, color: colors.lavender, icon: 'moon-outline' }].map((goal) => (
-              <View style={styles.goal} key={goal.label}><View style={[styles.goalIcon, { backgroundColor: goal.color }]}><Ionicons name={goal.icon} size={18} color={colors.text} /></View><AppText weight="semibold" style={styles.goalLabel}>{goal.label}</AppText><AppText style={styles.goalDetail}>{goal.detail}</AppText><ProgressBar value={goal.value} color={colors.primary} height={5} />{goal.label === 'Water' ? <View style={styles.waterActions}>{addingWater ? <ActivityIndicator size="small" color={colors.primary} /> : [250, 500, 750].map((amount) => <TouchableOpacity key={amount} activeOpacity={0.65} disabled={addingWater} onPress={() => handleAddWater(amount)} style={styles.waterButton}><AppText weight="semibold" style={styles.waterAction}>+{amount} ml</AppText></TouchableOpacity>)}</View> : null}{goal.label === 'Water' && waterError ? <AppText style={styles.waterError}>{waterError}</AppText> : null}</View>
+              <GoalCard key={goal.label} onPress={goal.label === 'Water' ? () => router.push('/water') : goal.label === 'Workout' ? () => router.push('/workouts') : goal.label === 'Nutrition' ? () => router.push('/meals') : null}><View style={[styles.goalIcon, { backgroundColor: goal.color }]}><Ionicons name={goal.icon} size={18} color={colors.text} /></View><AppText weight="semibold" style={styles.goalLabel}>{goal.label}</AppText><AppText style={styles.goalDetail}>{goal.detail}</AppText><ProgressBar value={goal.value} color={colors.primary} height={5} />{goal.label === 'Water' ? <View style={styles.waterActions}>{addingWater ? <ActivityIndicator size="small" color={colors.primary} /> : [250, 500, 750].map((amount) => <TouchableOpacity key={amount} activeOpacity={0.65} disabled={addingWater} onPress={() => handleAddWater(amount)} style={styles.waterButton}><AppText weight="semibold" style={styles.waterAction}>+{amount} ml</AppText></TouchableOpacity>)}</View> : null}{goal.label === 'Water' && waterError ? <AppText style={styles.waterError}>{waterError}</AppText> : null}</GoalCard>
             ))}
           </View>
         </View>
+
+        <GlassCard style={styles.streakCard}><View style={styles.streakHeader}><View><AppText style={styles.cardEyebrow}>HEALTH STREAK</AppText><AppText weight="bold" size={28}>{streak?.currentStreak === null || streak?.currentStreak === undefined ? '—' : `${streak.currentStreak} days`}</AppText><AppText style={styles.subtle}>{streak ? `${streak.completedDays}/7 days this week` : streakLoading ? 'Loading streak' : 'Streak unavailable'}</AppText></View><View style={styles.streakIcon}><Ionicons name="flame-outline" size={23} color={colors.primary} /></View></View>{streakError ? <View><AppText style={styles.streakError}>{streakError}</AppText><TouchableOpacity onPress={loadStreak} style={styles.streakRetry}><AppText weight="semibold" style={styles.streakRetryText}>Retry</AppText></TouchableOpacity></View> : streak ? <><View style={styles.streakDays}>{streak.weeklyProgress.map((day, index) => <View key={`${day.date || index}`} style={styles.streakDay}><View style={[styles.streakDot, day.completed && styles.streakDotComplete]}><Ionicons name={day.completed ? 'checkmark' : 'remove'} size={12} color={day.completed ? '#fff' : colors.tertiaryText} /></View><AppText style={styles.streakDayLabel}>{day.label || day.day || day.date || `Day ${index + 1}`}</AppText></View>)}</View>{streak.achievements.length ? <View style={styles.achievements}><AppText weight="semibold" style={styles.achievementTitle}>Achievements</AppText>{streak.achievements.map((achievement, index) => <View key={achievement.id || achievement.key || index} style={styles.achievement}><Ionicons name="ribbon-outline" size={17} color={colors.warning} /><AppText style={styles.achievementText}>{achievement.title || achievement.name || achievement.label}</AppText></View>)}</View> : null}</> : <AppText style={styles.subtle}>Complete a health activity to start your streak.</AppText>}</GlassCard>
 
         <GlassCard style={styles.insight}><View style={styles.insightHeader}><View style={styles.aiIcon}><Ionicons name="sparkles" size={17} color={colors.primary} /></View><AppText weight="semibold">Latest AI Recommendation</AppText></View>{aiHistoryLoading ? <AppText style={styles.subtle}>Loading saved nutrition summary...</AppText> : aiHistoryError ? <AppText style={styles.subtle}>AI nutrition summary unavailable</AppText> : latestRecommendation ? <><AppText weight="semibold" style={styles.recommendationTitle}>{latestRecommendation.title}</AppText><AppText style={styles.recommendationMeta}>{latestRecommendation.mealType.replace(/_/g, ' ')}</AppText><View style={styles.aiNutritionGrid}><NutritionValue label="Calories" value={latestNutrition.calories} unit="kcal" /><NutritionValue label="Protein" value={latestNutrition.proteinG} unit="g" /><NutritionValue label="Carbohydrates" value={latestNutrition.carbohydratesG} unit="g" /><NutritionValue label="Fat" value={latestNutrition.fatG} unit="g" /><NutritionValue label="Fiber" value={latestNutrition.fiberG} unit="g" /></View></> : aiHistory.length === 0 ? <AppText style={styles.subtle}>Generate your first AI meal recommendation</AppText> : <AppText style={styles.subtle}>AI nutrition summary unavailable</AppText>}</GlassCard>
 
@@ -145,6 +197,7 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 24 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   eyebrow: { color: colors.primary, fontSize: 10, letterSpacing: 1.2, marginBottom: 7 },
+  dateLine: { color: colors.text, fontSize: 14, marginTop: -3, marginBottom: 7 },
   subtle: { color: colors.secondaryText, fontSize: 12, marginTop: 3 },
   avatar: { width: 46, height: 46, borderRadius: 16, backgroundColor: colors.mint, alignItems: 'center', justifyContent: 'center' },
   scoreCard: { marginTop: 22, backgroundColor: colors.glassMedium },
@@ -166,6 +219,21 @@ const styles = StyleSheet.create({
   cardEyebrow: { color: colors.secondaryText, fontSize: 10, letterSpacing: 1.3 },
   scoreTrend: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.mint, paddingHorizontal: 9, paddingVertical: 5, borderRadius: 12 },
   trendText: { color: colors.success, fontSize: 12, marginLeft: 3 },
+  streakCard: { marginTop: 26, backgroundColor: colors.mint },
+  streakHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  streakIcon: { width: 46, height: 46, borderRadius: 15, backgroundColor: 'rgba(255,255,255,0.72)', alignItems: 'center', justifyContent: 'center' },
+  streakDays: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 20 },
+  streakDay: { alignItems: 'center', flex: 1 },
+  streakDot: { width: 28, height: 28, borderRadius: 10, backgroundColor: 'rgba(23,34,29,0.08)', alignItems: 'center', justifyContent: 'center' },
+  streakDotComplete: { backgroundColor: colors.primary },
+  streakDayLabel: { color: colors.secondaryText, fontSize: 9, marginTop: 6, textAlign: 'center' },
+  streakError: { color: colors.danger, fontSize: 12, marginTop: 16 },
+  streakRetry: { alignSelf: 'flex-start', marginTop: 10, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10, backgroundColor: colors.glassStrong },
+  streakRetryText: { color: colors.primary, fontSize: 12 },
+  achievements: { marginTop: 18, paddingTop: 14, borderTopWidth: 1, borderTopColor: colors.border },
+  achievementTitle: { fontSize: 12 },
+  achievement: { flexDirection: 'row', alignItems: 'center', marginTop: 9 },
+  achievementText: { color: colors.secondaryText, fontSize: 12, marginLeft: 8 },
   scoreRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 12 },
   scoreCopy: { marginLeft: 15 },
   section: { marginTop: 28 },

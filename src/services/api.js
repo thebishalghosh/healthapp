@@ -96,13 +96,42 @@ const api = {
   getFoodRecommendations: (token) => request('/ai/food-recommendations', { method: 'POST', body: {}, token }),
   getFoodRecommendationHistory: (token, limit = 20, offset = 0) => request(`/ai/food-recommendations/history?limit=${limit}&offset=${offset}`, { token }),
   getAIUsage: (token) => request('/ai/usage', { token }),
+  getReminders: (token) => request('/reminders', { token }),
+  createReminder: (token, data) => request('/reminders', { method: 'POST', body: data, token }),
+  updateReminder: (token, id, data) => request(`/reminders/${encodeURIComponent(id)}`, { method: 'PUT', body: data, token }),
+  deleteReminder: (token, id) => request(`/reminders/${encodeURIComponent(id)}`, { method: 'DELETE', token }),
   getTodayHealth: (token) => request('/health/today', { token }),
+  getHealthStreak: (token) => {
+    const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const timezone = detectedTimezone === 'Asia/Calcutta' ? 'Asia/Kolkata' : detectedTimezone;
+    return request(`/health/streak?timezone=${encodeURIComponent(timezone)}`, { token });
+  },
   getWater: (token) => request('/health/water', { token }),
+  getWaterHistory: (token, date) => {
+    const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const timezone = detectedTimezone === 'Asia/Calcutta' ? 'Asia/Kolkata' : detectedTimezone;
+    return request(`/health/water/history?date=${encodeURIComponent(date)}&timezone=${encodeURIComponent(timezone)}`, { token });
+  },
   addWater: (token, amountMl) => request('/health/water', { method: 'POST', body: { amount_ml: amountMl }, token }),
+  deleteWater: (token, id) => request(`/health/water?id=${encodeURIComponent(id)}`, { method: 'DELETE', token }),
   getFood: (token) => request('/health/food', { token }),
+  getFoodHistory: (token, date) => {
+    const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const timezone = detectedTimezone === 'Asia/Calcutta' ? 'Asia/Kolkata' : detectedTimezone;
+    return request(`/health/food/history?date=${encodeURIComponent(date)}&timezone=${encodeURIComponent(timezone)}`, { token });
+  },
   addFood: (token, data) => request('/health/food', { method: 'POST', body: data, token }),
+  updateFood: (token, id, data) => request(`/health/food?id=${encodeURIComponent(id)}`, { method: 'PUT', body: data, token }),
+  deleteFood: (token, id) => request(`/health/food?id=${encodeURIComponent(id)}`, { method: 'DELETE', token }),
   getWorkouts: (token) => request('/health/workouts', { token }),
   addWorkout: (token, data) => request('/health/workouts', { method: 'POST', body: data, token }),
+  getWorkoutHistory: (token, date) => {
+    const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const timezone = detectedTimezone === 'Asia/Calcutta' ? 'Asia/Kolkata' : detectedTimezone;
+    return request(`/health/workouts/history?date=${encodeURIComponent(date)}&timezone=${encodeURIComponent(timezone)}`, { token });
+  },
+  updateWorkout: (token, id, data) => request(`/health/workouts?id=${encodeURIComponent(id)}`, { method: 'PUT', body: data, token }),
+  deleteWorkout: (token, id) => request(`/health/workouts?id=${encodeURIComponent(id)}`, { method: 'DELETE', token }),
   getSleep: (token) => request('/health/sleep', { token }),
   addSleep: (token, data) => request('/health/sleep', { method: 'POST', body: data, token }),
 };
