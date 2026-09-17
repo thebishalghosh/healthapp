@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,6 +11,7 @@ import colors from '../../constants/colors';
 import { useAuth } from '../../context/AuthContext';
 import { activityLabels, formatDateForDisplay, goalLabels } from '../../services/profile';
 import { cancelAllReminderNotifications } from '../../services/reminders';
+import { refreshCurrentSubscription } from '../../services/subscription';
 
 function initials(user) {
   const values = [user?.first_name, user?.last_name].filter(Boolean);
@@ -23,6 +24,25 @@ function display(value) {
 
 function numberWithUnit(value, unit) {
   return value === null || value === undefined ? 'Not set' : `${value} ${unit}`;
+}
+
+function subscriptionPlan(subscription) {
+  return subscription?.plan || subscription || {};
+}
+
+function subscriptionStatus(subscription) {
+  const status = String(subscription?.status || '').toLowerCase();
+  if (status === 'active' || status === 'authenticated') return 'Active';
+  if (status === 'pending') return 'Pending';
+  if (status === 'cancelled') return 'Cancelled';
+  if (status === 'expired') return 'Expired';
+  return 'No active subscription';
+}
+
+function subscriptionPrice(subscription) {
+  const plan = subscriptionPlan(subscription);
+  if (plan.price === undefined || plan.price === null) return '';
+  return `${plan.currency || ''} ${plan.price}${plan.billing_period ? ` / ${plan.billing_period}` : ''}`.trim();
 }
 
 function ProfileSkeleton() {
@@ -49,18 +69,33 @@ export default function Profile() {
   const [refreshing, setRefreshing] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [refreshError, setRefreshError] = useState('');
+  const [subscription, setSubscription] = useState(null);
+  const [subscriptionLoading, setSubscriptionLoading] = useState(true);
+  const [subscriptionError, setSubscriptionError] = useState('');
+
+  const loadSubscription = useCallback(async () => {
+    setSubscriptionLoading(true);
+    setSubscriptionError('');
+    try {
+      setSubscription(await refreshCurrentSubscription());
+    } catch (error) {
+      setSubscriptionError(error.message || 'Unable to load subscription.');
+    } finally {
+      setSubscriptionLoading(false);
+    }
+  }, []);
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
     setRefreshError('');
     try {
-      await Promise.all([refreshProfile(), refreshNutrition()]);
+      await Promise.all([refreshProfile(), refreshNutrition(), loadSubscription()]);
     } catch (error) {
       setRefreshError(error.message || 'Unable to refresh your profile. Please try again.');
     } finally {
       setRefreshing(false);
     }
-  }, [refreshNutrition, refreshProfile]);
+  }, [loadSubscription, refreshNutrition, refreshProfile]);
 
   useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
 
@@ -79,6 +114,10 @@ export default function Profile() {
   const profileUnavailable = profileError && !profileLoading;
   const nutritionUnavailable = nutritionError && !nutritionLoading;
   const fullName = [user?.first_name, user?.last_name].filter(Boolean).join(' ') || 'Your profile';
+  const plan = subscriptionPlan(subscription);
+  const planName = plan.name || plan.code || 'Free Plan';
+  const planPrice = subscriptionPrice(subscription);
+  const status = subscriptionStatus(subscription);
 
   return <GradientBackground style={styles.container} innerStyle={styles.backgroundContent}>
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -91,6 +130,7 @@ export default function Profile() {
           <View style={styles.section}><SectionTitle title="Personal information" action="Edit" onPress={() => router.push('/edit-profile')} /><GlassCard style={styles.card}><View style={styles.infoGrid}><InfoRow label="Date of birth" value={profile?.dateOfBirth ? formatDateForDisplay(profile.dateOfBirth) : 'Not set'} icon="calendar-outline" /><InfoRow label="Age" value={profile?.age === null || profile?.age === undefined ? 'Not set' : `${profile.age} years`} icon="time-outline" /><InfoRow label="Gender" value={display(profile?.gender)} icon="person-outline" /><InfoRow label="Activity level" value={activityLabels[profile?.activityLevel] || display(profile?.activityLevel)} icon="fitness-outline" /></View></GlassCard></View>
           <View style={styles.section}><SectionTitle title="Body & goals" /><GlassCard style={styles.card}><View style={styles.metrics}><Metric label="Height" value={profile?.height} unit=" cm" icon="resize-outline" color={colors.blue} /><Metric label="Weight" value={profile?.weight} unit=" kg" icon="scale-outline" color={colors.mint} /></View><View style={styles.goalRow}><View style={styles.goalIcon}><Ionicons name="flag-outline" size={18} color={colors.primary} /></View><View><AppText style={styles.infoLabel}>Fitness goal</AppText><AppText weight="semibold" style={styles.goalValue}>{goalLabels[profile?.goal] || display(profile?.goal)}</AppText></View></View></GlassCard></View>
           <View style={styles.section}><SectionTitle title="Nutrition targets" /><GlassCard style={styles.card}>{nutritionUnavailable ? <View><AppText weight="semibold">Nutrition targets are unavailable.</AppText><AppText style={styles.muted}>Complete your profile to calculate your nutrition targets.</AppText><PrimaryButton title="Edit Profile" onPress={() => router.push('/edit-profile')} style={styles.retryButton} /></View> : nutrition ? <View style={styles.nutritionGrid}><InfoRow label="Calories" value={numberWithUnit(nutrition.caloriesTarget, 'kcal')} icon="flame-outline" /><InfoRow label="Protein" value={numberWithUnit(nutrition.protein, 'g')} icon="fitness-outline" /><InfoRow label="Carbohydrates" value={numberWithUnit(nutrition.carbohydrates, 'g')} icon="leaf-outline" /><InfoRow label="Fat" value={numberWithUnit(nutrition.fat, 'g')} icon="water-outline" /><InfoRow label="Fiber" value={numberWithUnit(nutrition.fiber, 'g')} icon="nutrition-outline" /><InfoRow label="Water" value={numberWithUnit(nutrition.water, 'ml')} icon="beaker-outline" /></View> : <View><AppText weight="semibold">Complete your profile to calculate your nutrition targets.</AppText><PrimaryButton title="Edit Profile" onPress={() => router.push('/edit-profile')} style={styles.retryButton} /></View>}</GlassCard></View>
+          <View style={styles.section}><SectionTitle title="Current Subscription" />{subscriptionLoading ? <GlassCard style={styles.card}><View style={styles.subscriptionLoading}><ActivityIndicator color={colors.primary} /><AppText style={styles.muted}>Loading subscription...</AppText></View></GlassCard> : subscriptionError ? <GlassCard style={styles.card}><AppText weight="semibold">Unable to load subscription</AppText><PrimaryButton title="Retry" onPress={loadSubscription} style={styles.retryButton} /></GlassCard> : <GlassCard style={styles.card}><AppText weight="bold" size={21}>{subscription ? planName : 'Free Plan'}</AppText><AppText style={styles.subscriptionStatus}>{status}</AppText>{planPrice ? <AppText style={styles.muted}>{planPrice}</AppText> : null}<TouchableOpacity onPress={() => router.push('/membership')} accessibilityRole="button" style={styles.membershipLink}><AppText weight="semibold" style={styles.sectionAction}>View Membership</AppText><Ionicons name="arrow-forward" size={16} color={colors.primary} /></TouchableOpacity></GlassCard>}</View>
           <View style={styles.section}><SectionTitle title="Settings" /><GlassCard style={styles.card}><SettingRow label="Edit Profile" icon="create-outline" onPress={() => router.push('/edit-profile')} /><SettingRow label="Reminders" detail="Manage water, meal, workout, and sleep reminders" icon="notifications-outline" onPress={() => router.push('/reminders')} /><SettingRow label="Change Password" detail="Not available in this app version" icon="lock-closed-outline" /><SettingRow label="Delete Account/Data" detail="Not available in this app version" icon="trash-outline" isLast /></GlassCard></View>
           <View style={styles.section}><SectionTitle title="Account" /><PrimaryButton title="Sign Out" onPress={handleLogout} loading={loggingOut} disabled={loggingOut} style={styles.logout} /></View>
         </>}
@@ -139,6 +179,9 @@ const styles = StyleSheet.create({
   errorText: { color: colors.danger, fontSize: 12 },
   muted: { color: colors.secondaryText, fontSize: 12, marginTop: 4 },
   retryButton: { marginTop: 16 },
+  subscriptionLoading: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  subscriptionStatus: { color: colors.success, fontSize: 13, marginTop: 7 },
+  membershipLink: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 18 },
   settingRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: colors.border },
   settingRowLast: { borderBottomWidth: 0 },
   settingIcon: { width: 36, height: 36, borderRadius: 12, backgroundColor: colors.mint, alignItems: 'center', justifyContent: 'center', marginRight: 11 },

@@ -134,6 +134,11 @@ const api = {
   deleteWorkout: (token, id) => request(`/health/workouts?id=${encodeURIComponent(id)}`, { method: 'DELETE', token }),
   getSleep: (token) => request('/health/sleep', { token }),
   addSleep: (token, data) => request('/health/sleep', { method: 'POST', body: data, token }),
+  getSubscriptionPlans: (token) => request('/subscription/plans', { token }),
+  getCurrentSubscription: (token) => request('/subscription/current', { token }),
+  getSubscriptionFeatures: (token) => request('/subscription/features', { token }),
+  createSubscription: (token, planCode) => request('/subscription/create', { method: 'POST', body: { plan_code: planCode }, token }),
+  cancelSubscription: (token) => request('/subscription/cancel', { method: 'POST', token }),
 };
 
 export { ApiError, api };
