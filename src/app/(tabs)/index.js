@@ -59,7 +59,7 @@ function normalizeStreak(response) {
 export default function Home() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { user: account, profile, profileLoading, profileError, refreshProfile, nutritionLoading, today, todayLoading, todayError, refreshToday, calculateNutrition, addWater, getRecommendationHistory } = useAuth();
+  const { user: account, profile, profileLoading, profileError, refreshProfile, nutritionLoading, today, todayLoading, todayError, refreshToday, calculateNutrition, addWater, getRecommendationHistory, hasFeature, entitlementsLoading, entitlementsError } = useAuth();
   const [addingWater, setAddingWater] = useState(false);
   const [waterError, setWaterError] = useState('');
   const [aiHistory, setAIHistory] = useState([]);
@@ -96,8 +96,8 @@ export default function Home() {
   }, [getRecommendationHistory]);
 
   useFocusEffect(useCallback(() => {
-    loadAIHistory();
-  }, [loadAIHistory, account?.id, account?.email]));
+    if (!entitlementsLoading && !entitlementsError && hasFeature('ai')) loadAIHistory();
+  }, [loadAIHistory, account?.id, account?.email, hasFeature, entitlementsLoading, entitlementsError]));
 
   const loadStreak = useCallback(async () => {
     const token = await tokenStorage.get();
@@ -166,7 +166,7 @@ export default function Home() {
         <View style={styles.section}><SectionHeader eyebrow="Your rhythm" title="Today's goals" action="See all" />
             <View style={styles.goalGrid}>
             {[{ label: 'Water', value: today?.water?.percentage ? today.water.percentage / 100 : 0, detail: waterDetail, color: colors.blue, icon: 'water-outline' }, { label: 'Workout', value: 0, detail: workoutDetail, color: colors.mint, icon: 'fitness-outline' }, { label: 'Nutrition', value: nutritionCalories ? Math.min(1, (caloriesConsumed || 0) / nutritionCalories) : 0, detail: nutritionDetail, color: colors.amber, icon: 'nutrition-outline' }, { label: 'Sleep', value: 0, detail: sleepDetail, color: colors.lavender, icon: 'moon-outline' }].map((goal) => (
-              <GoalCard key={goal.label} onPress={goal.label === 'Water' ? () => router.push('/water') : goal.label === 'Workout' ? () => router.push('/workouts') : goal.label === 'Nutrition' ? () => router.push('/meals') : null}><View style={[styles.goalIcon, { backgroundColor: goal.color }]}><Ionicons name={goal.icon} size={18} color={colors.text} /></View><AppText weight="semibold" style={styles.goalLabel}>{goal.label}</AppText><AppText style={styles.goalDetail}>{goal.detail}</AppText><ProgressBar value={goal.value} color={colors.primary} height={5} />{goal.label === 'Water' ? <View style={styles.waterActions}>{addingWater ? <ActivityIndicator size="small" color={colors.primary} /> : [250, 500, 750].map((amount) => <TouchableOpacity key={amount} activeOpacity={0.65} disabled={addingWater} onPress={() => handleAddWater(amount)} style={styles.waterButton}><AppText weight="semibold" style={styles.waterAction}>+{amount} ml</AppText></TouchableOpacity>)}</View> : null}{goal.label === 'Water' && waterError ? <AppText style={styles.waterError}>{waterError}</AppText> : null}</GoalCard>
+              <GoalCard key={goal.label} onPress={goal.label === 'Water' ? () => router.push('/water') : goal.label === 'Workout' ? () => router.push('/workouts') : goal.label === 'Nutrition' ? () => router.push('/meals') : goal.label === 'Sleep' ? () => router.push('/sleep') : null}><View style={[styles.goalIcon, { backgroundColor: goal.color }]}><Ionicons name={goal.icon} size={18} color={colors.text} /></View><AppText weight="semibold" style={styles.goalLabel}>{goal.label}</AppText><AppText style={styles.goalDetail}>{goal.detail}</AppText><ProgressBar value={goal.value} color={colors.primary} height={5} />{goal.label === 'Water' ? <View style={styles.waterActions}>{addingWater ? <ActivityIndicator size="small" color={colors.primary} /> : [250, 500, 750].map((amount) => <TouchableOpacity key={amount} activeOpacity={0.65} disabled={addingWater} onPress={() => handleAddWater(amount)} style={styles.waterButton}><AppText weight="semibold" style={styles.waterAction}>+{amount} ml</AppText></TouchableOpacity>)}</View> : null}{goal.label === 'Water' && waterError ? <AppText style={styles.waterError}>{waterError}</AppText> : null}</GoalCard>
             ))}
           </View>
         </View>

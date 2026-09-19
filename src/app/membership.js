@@ -6,6 +6,7 @@ import AppText from '../components/ui/AppText';
 import GlassCard from '../components/ui/GlassCard';
 import GradientBackground from '../components/ui/GradientBackground';
 import PrimaryButton from '../components/ui/PrimaryButton';
+import { useAuth } from '../context/AuthContext';
 import colors from '../constants/colors';
 import { cancelMembership, getMembership, openSubscriptionCheckout, refreshCurrentSubscription } from '../services/subscription';
 
@@ -31,14 +32,15 @@ export default function Membership() {
   const [processingPlan, setProcessingPlan] = useState('');
   const [cancelling, setCancelling] = useState(false);
   const [message, setMessage] = useState(null);
+  const { refreshEntitlements } = useAuth();
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true); else setLoading(true);
     setMessage(null);
-    try { setMembership(await getMembership()); }
+    try { setMembership(await getMembership()); await refreshEntitlements(); }
     catch (error) { setMessage({ type: 'error', text: error.message || 'Unable to load membership.' }); }
     finally { setLoading(false); setRefreshing(false); }
-  }, []);
+  }, [refreshEntitlements]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
@@ -52,6 +54,7 @@ export default function Membership() {
         setMessage({ type: 'info', text: 'Payment received. Activating your membership...' });
       });
       setMembership((current) => ({ ...current, subscription: result.subscription }));
+      await refreshEntitlements();
       if (result.type === 'already_active') {
         setMessage({ type: 'info', text: 'You are already subscribed to this plan.' });
       } else if (isActive(result.subscription)) {
@@ -73,6 +76,7 @@ export default function Membership() {
     try {
       const subscription = await refreshCurrentSubscription();
       setMembership((current) => ({ ...current, subscription }));
+      await refreshEntitlements();
       setMessage({ type: isActive(subscription) ? 'success' : 'info', text: isActive(subscription) ? 'Your membership is active.' : 'Payment is still being processed. Please refresh your membership status shortly.' });
     } catch (error) { setMessage({ type: 'error', text: error.message || 'Unable to refresh membership status.' }); }
     finally { setRefreshing(false); }
@@ -85,6 +89,7 @@ export default function Membership() {
     try {
       const subscription = await cancelMembership();
       setMembership((current) => ({ ...current, subscription }));
+      await refreshEntitlements();
       setMessage({ type: 'success', text: 'Subscription cancelled successfully.' });
     }
     catch (error) { setMessage({ type: 'error', text: error.message || 'Unable to cancel membership.' }); }

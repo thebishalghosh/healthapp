@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, RefreshControl, ScrollView, StyleSheet, Switch, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Platform, RefreshControl, ScrollView, StyleSheet, Switch, TextInput, TouchableOpacity, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,19 +9,21 @@ import GlassCard from '../components/ui/GlassCard';
 import GradientBackground from '../components/ui/GradientBackground';
 import PrimaryButton from '../components/ui/PrimaryButton';
 import SectionHeader from '../components/ui/SectionHeader';
+import LockedFeature from '../components/ui/LockedFeature';
 import colors from '../constants/colors';
 import { useAuth } from '../context/AuthContext';
-import { cancelReminderNotifications, createReminder, deleteReminder, listReminders, reconcileReminderNotifications, scheduleReminderNotification, updateReminder } from '../services/reminders';
+import { cancelReminderNotifications, createReminder, deleteReminder, getPermissionStatus, listReminders, patchReminder, reconcileReminderNotifications, requestNotificationPermission, scheduleReminderNotification, updateReminder } from '../services/reminders';
 
 const TYPES = [
   { value: 'water', label: 'Water', icon: 'water-outline', color: colors.blue, title: 'Drink water', message: 'Take a moment to hydrate.' },
   { value: 'meal', label: 'Meal', icon: 'restaurant-outline', color: colors.amber, title: 'Meal time', message: 'Remember to log your meal.' },
   { value: 'workout', label: 'Workout', icon: 'fitness-outline', color: colors.mint, title: 'Move your body', message: 'Time for your workout.' },
   { value: 'sleep', label: 'Sleep', icon: 'moon-outline', color: colors.lavender, title: 'Wind down', message: 'Prepare for a restful night.' },
+  { value: 'custom', label: 'Custom', icon: 'create-outline', color: colors.amber, title: 'Health reminder', message: 'A moment for your wellbeing.' },
 ];
 const REPEATS = [{ value: 'once', label: 'Once' }, { value: 'daily', label: 'Daily' }, { value: 'weekly', label: 'Weekly' }, { value: 'custom', label: 'Custom' }];
-const DAYS = [{ value: 1, label: 'Sun' }, { value: 2, label: 'Mon' }, { value: 3, label: 'Tue' }, { value: 4, label: 'Wed' }, { value: 5, label: 'Thu' }, { value: 6, label: 'Fri' }, { value: 7, label: 'Sat' }];
-const EMPTY_FORM = { type: 'water', title: 'Drink water', message: 'Take a moment to hydrate.', time: '09:00', repeat: 'daily', days: [2, 4, 6], startDate: '', endDate: '', enabled: true };
+const DAYS = [{ value: 0, label: 'Sun' }, { value: 1, label: 'Mon' }, { value: 2, label: 'Tue' }, { value: 3, label: 'Wed' }, { value: 4, label: 'Thu' }, { value: 5, label: 'Fri' }, { value: 6, label: 'Sat' }];
+const EMPTY_FORM = { type: 'water', title: 'Drink water', message: 'Take a moment to hydrate.', time: '09:00', repeat: 'daily', days: [1, 3, 5], startDate: '', endDate: '', enabled: true };
 
 function normalizeReminder(value) {
   let repeatDays = value.repeat_days;
@@ -70,7 +72,7 @@ function reminderBody(form) {
 export default function Reminders() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, hasFeature, entitlementsLoading, denyFeature } = useAuth();
   const [reminders, setReminders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -79,16 +81,27 @@ export default function Reminders() {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [showTimePicker, setShowTimePicker] = useState(false);
+  const [permission, setPermission] = useState(null);
+
+  const showRequestError = (requestError) => {
+    if (denyFeature('reminders', requestError)) {
+      setError('');
+      return;
+    }
+    setError(requestError.message || 'Unable to update reminders. Please try again.');
+  };
 
   const loadReminders = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
+      const nextPermission = await getPermissionStatus();
+      setPermission(nextPermission);
       const next = (await listReminders()).map(normalizeReminder);
       setReminders(next);
       if (user?.id) await reconcileReminderNotifications(user.id, next);
     } catch (loadError) {
-      setError(loadError.message || 'Unable to load reminders. Please try again.');
+      showRequestError(loadError);
     } finally {
       setLoading(false);
     }
@@ -100,6 +113,12 @@ export default function Reminders() {
     setForm((current) => ({ ...current, [field]: value }));
     setError('');
     setNotice('');
+  };
+
+  const retryPermission = async () => {
+    const nextPermission = await requestNotificationPermission();
+    setPermission(nextPermission);
+    if (!nextPermission.granted && nextPermission.canAskAgain === false) await Linking.openSettings();
   };
 
   const selectType = (type) => {
@@ -156,7 +175,7 @@ export default function Reminders() {
       setEditing(null);
       setForm(EMPTY_FORM);
     } catch (saveError) {
-      setError(saveError.message || 'Unable to save this reminder. Please try again.');
+      showRequestError(saveError);
     } finally {
       setSaving(false);
     }
@@ -169,7 +188,7 @@ export default function Reminders() {
     try {
       const enabled = !reminder.is_enabled;
       if (!enabled) await cancelReminderNotifications(user?.id, reminder.id);
-      await updateReminder(reminder.id, { is_enabled: enabled });
+      await patchReminder(reminder.id, { is_enabled: enabled });
       const next = (await listReminders()).map(normalizeReminder);
       setReminders(next);
       const updated = next.find((item) => item.id === reminder.id);
@@ -178,7 +197,7 @@ export default function Reminders() {
         setNotice(scheduledIds.length ? 'Reminder enabled.' : 'Reminder enabled, but notifications are disabled on this device.');
       } else setNotice('Reminder disabled.');
     } catch (toggleError) {
-      setError(toggleError.message || 'Unable to update this reminder. Please try again.');
+      showRequestError(toggleError);
     } finally {
       setSaving(false);
     }
@@ -195,7 +214,7 @@ export default function Reminders() {
           setReminders((current) => current.filter((item) => item.id !== reminder.id));
           setNotice('Reminder deleted.');
         } catch (deleteError) {
-          setError(deleteError.message || 'Unable to delete this reminder. Please try again.');
+          showRequestError(deleteError);
         } finally { setSaving(false); }
       } },
     ]);
@@ -208,6 +227,10 @@ export default function Reminders() {
     setNotice('');
   };
 
+  if (entitlementsLoading || !hasFeature('reminders')) {
+    return <LockedFeature loading={entitlementsLoading} title="Reminders" description="Create personalized health reminders for water, meals, workouts and more." />;
+  }
+
   return (
     <GradientBackground style={styles.container} innerStyle={styles.backgroundContent}>
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
@@ -215,6 +238,7 @@ export default function Reminders() {
           <View style={styles.header}><TouchableOpacity accessibilityLabel="Go back" accessibilityRole="button" onPress={() => router.back()} style={styles.backButton}><Ionicons name="arrow-back" size={21} color={colors.primary} /></TouchableOpacity><View style={styles.headerCopy}><AppText style={styles.eyebrow}>PERSONAL RHYTHM</AppText><AppText weight="bold" size={30}>Smart Reminders</AppText><AppText style={styles.subtitle}>Keep helpful moments close without adding noise.</AppText></View><View style={styles.headerIcon}><Ionicons name="notifications-outline" size={22} color={colors.primary} /></View></View>
           {error ? <GlassCard style={styles.message}><AppText style={styles.errorText}>{error}</AppText></GlassCard> : null}
           {notice ? <GlassCard style={styles.message}><AppText style={styles.noticeText}>{notice}</AppText></GlassCard> : null}
+          {permission && !permission.granted ? <GlassCard style={styles.message}><AppText style={styles.errorText}>{permission.status === 'expo-go-disabled' ? 'Local reminders are available in Expo Go, but remote push registration requires a development build.' : 'Notifications are disabled on this device.'}</AppText><TouchableOpacity onPress={retryPermission} style={styles.permissionButton}><AppText weight="semibold" style={styles.permissionText}>{permission.status === 'expo-go-disabled' ? 'Use a development build' : 'Enable notifications'}</AppText></TouchableOpacity></GlassCard> : null}
           <View style={styles.section}><View style={styles.sectionHeader}><SectionHeader title="Your reminders" />{loading ? <ActivityIndicator color={colors.primary} /> : null}</View>{!loading && !reminders.length ? <GlassCard style={styles.empty}><Ionicons name="notifications-off-outline" size={25} color={colors.primary} /><AppText style={styles.statusText}>No reminders yet.</AppText></GlassCard> : null}{reminders.map((reminder) => <GlassCard key={String(reminder.id)} style={styles.card}><View style={styles.cardRow}><View style={[styles.typeIcon, { backgroundColor: TYPES.find((type) => type.value === reminder.reminder_type)?.color || colors.mint }]}><Ionicons name={TYPES.find((type) => type.value === reminder.reminder_type)?.icon || 'notifications-outline'} size={19} color={colors.text} /></View><View style={styles.cardCopy}><AppText weight="semibold">{reminder.title}</AppText><AppText style={styles.muted}>{TYPES.find((type) => type.value === reminder.reminder_type)?.label || reminder.reminder_type} · {formatTime(reminder.reminder_time)}</AppText><AppText style={styles.muted}>{formatRepeat(reminder)}</AppText></View><Switch value={reminder.is_enabled} onValueChange={() => toggleReminder(reminder)} disabled={saving} trackColor={{ false: colors.border, true: colors.mint }} thumbColor={reminder.is_enabled ? colors.primary : colors.tertiaryText} /></View><View style={styles.actions}><TouchableOpacity onPress={() => beginEdit(reminder)} disabled={saving} style={styles.action}><Ionicons name="create-outline" size={17} color={colors.primary} /><AppText style={styles.actionText}>Edit</AppText></TouchableOpacity><TouchableOpacity onPress={() => removeReminder(reminder)} disabled={saving} style={[styles.action, styles.deleteAction]}><Ionicons name="trash-outline" size={17} color={colors.danger} /><AppText style={styles.deleteText}>Delete</AppText></TouchableOpacity></View></GlassCard>)}</View>
           <View style={styles.section}><SectionHeader title={editing ? 'Edit reminder' : 'Add reminder'} /><View style={styles.formCard}><AppText weight="semibold" style={styles.formLabel}>Reminder type</AppText><View style={styles.typeGrid}>{TYPES.map((type) => <TouchableOpacity key={type.value} onPress={() => selectType(type.value)} style={[styles.typeButton, { backgroundColor: type.color }, form.type === type.value && styles.typeActive]}><Ionicons name={type.icon} size={16} color={colors.text} /><AppText weight="semibold" style={styles.typeText}>{type.label}</AppText></TouchableOpacity>)}</View><FormField label="Title" value={form.title} onChangeText={(value) => updateField('title', value)} placeholder="Reminder title" /><FormField label="Message" value={form.message} onChangeText={(value) => updateField('message', value)} placeholder="Optional message" /><AppText weight="semibold" style={styles.formLabel}>Time</AppText><TouchableOpacity onPress={() => setShowTimePicker(true)} style={styles.timeButton}><Ionicons name="time-outline" size={18} color={colors.primary} /><AppText weight="semibold" style={styles.timeText}>{formatTime(form.time)}</AppText></TouchableOpacity>{showTimePicker ? <DateTimePicker value={timeDate(form.time)} mode="time" is24Hour={false} display={Platform.OS === 'ios' ? 'spinner' : 'default'} onChange={(event, value) => { setShowTimePicker(Platform.OS === 'ios'); if (value) updateField('time', `${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}`); }} /> : null}<AppText weight="semibold" style={styles.formLabel}>Repeat</AppText><View style={styles.repeatGrid}>{REPEATS.map((repeat) => <TouchableOpacity key={repeat.value} onPress={() => updateField('repeat', repeat.value)} style={[styles.repeatButton, form.repeat === repeat.value && styles.repeatActive]}><AppText weight="semibold" style={styles.repeatText}>{repeat.label}</AppText></TouchableOpacity>)}</View>{form.repeat === 'weekly' || form.repeat === 'custom' ? <><AppText weight="semibold" style={styles.formLabel}>Days</AppText><View style={styles.daysGrid}>{DAYS.map((day) => <TouchableOpacity key={day.value} onPress={() => updateField('days', form.days.includes(day.value) ? form.days.filter((value) => value !== day.value) : [...form.days, day.value])} style={[styles.dayButton, form.days.includes(day.value) && styles.dayActive]}><AppText weight="semibold" style={styles.dayText}>{day.label}</AppText></TouchableOpacity>)}</View></> : null}<FormField label="Start date (optional)" value={form.startDate} onChangeText={(value) => updateField('startDate', value)} placeholder="YYYY-MM-DD" keyboardType="numbers-and-punctuation" /><FormField label="End date (optional)" value={form.endDate} onChangeText={(value) => updateField('endDate', value)} placeholder="YYYY-MM-DD" keyboardType="numbers-and-punctuation" /><View style={styles.enabledRow}><AppText weight="semibold">Enabled</AppText><Switch value={form.enabled} onValueChange={(value) => updateField('enabled', value)} trackColor={{ false: colors.border, true: colors.mint }} thumbColor={form.enabled ? colors.primary : colors.tertiaryText} /></View>{editing ? <TouchableOpacity onPress={() => { setEditing(null); setForm(EMPTY_FORM); }} style={styles.cancel}><AppText weight="semibold" style={styles.cancelText}>Cancel edit</AppText></TouchableOpacity> : null}<PrimaryButton title={editing ? 'Save changes' : 'Save reminder'} onPress={saveReminder} loading={saving} disabled={saving} style={styles.saveButton} /></View></View>
         </ScrollView>

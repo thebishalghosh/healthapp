@@ -1,10 +1,12 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { AppState } from 'react-native';
 import { api } from '../services/api';
 import tokenStorage from '../services/tokenStorage';
 import { normalizeProfile } from '../services/profile';
 import { normalizeNutrition } from '../services/nutrition';
 import { normalizeToday } from '../services/health';
 import { normalizeAIUsage, normalizeHistory, normalizeRecommendations } from '../services/recommendations';
+import { getEntitlements, isSubscriptionRestriction } from '../services/entitlements';
 
 const AuthContext = createContext(null);
 
@@ -23,6 +25,9 @@ export function AuthProvider({ children }) {
   const [recommendations, setRecommendations] = useState(null);
   const [recommendationsLoading, setRecommendationsLoading] = useState(false);
   const [recommendationsError, setRecommendationsError] = useState(null);
+  const [entitlements, setEntitlements] = useState({ plan: null, isPaid: false, features: {} });
+  const [entitlementsLoading, setEntitlementsLoading] = useState(true);
+  const [entitlementsError, setEntitlementsError] = useState(null);
 
   const clearSession = async () => {
     await tokenStorage.remove();
@@ -31,7 +36,39 @@ export function AuthProvider({ children }) {
     setNutrition(null);
     setToday(null);
     setRecommendations(null);
+    setEntitlements({ plan: null, isPaid: false, features: {} });
+    setEntitlementsError(null);
   };
+
+  const refreshEntitlements = useCallback(async (providedToken) => {
+    const token = providedToken || await tokenStorage.get();
+    if (!token) {
+      setEntitlementsLoading(false);
+      return null;
+    }
+    setEntitlementsLoading(true);
+    setEntitlementsError(null);
+    try {
+      const nextEntitlements = await getEntitlements(token);
+      setEntitlements(nextEntitlements);
+      return nextEntitlements;
+    } catch (error) {
+      setEntitlements({ plan: null, isPaid: false, features: {} });
+      setEntitlementsError(error);
+      if (error.status === 401 || error.code === 'UNAUTHENTICATED') await clearSession();
+      return null;
+    } finally {
+      setEntitlementsLoading(false);
+    }
+  }, []);
+
+  const denyFeature = useCallback((feature, error) => {
+    if (!isSubscriptionRestriction(error)) return false;
+    setEntitlements((current) => ({ ...current, features: { ...current.features, [feature]: false } }));
+    return true;
+  }, []);
+
+  const hasFeature = useCallback((feature) => !entitlementsLoading && !entitlementsError && Boolean(entitlements.features[feature]), [entitlements, entitlementsLoading, entitlementsError]);
 
   const refreshProfile = useCallback(async (providedToken) => {
     const token = providedToken || await tokenStorage.get();
@@ -172,6 +209,7 @@ export function AuthProvider({ children }) {
 
       const data = await api.me(token);
       setUser(data.user);
+      await refreshEntitlements(token);
       try { await refreshProfile(token); } catch (error) { }
     } catch (error) {
       if (error.status === 401 || error.code === 'UNAUTHENTICATED') {
@@ -186,6 +224,14 @@ export function AuthProvider({ children }) {
     restoreSession();
   }, []);
 
+  useEffect(() => {
+    if (!user) return undefined;
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refreshEntitlements();
+    });
+    return () => subscription.remove();
+  }, [user, refreshEntitlements]);
+
   const login = async (email, password) => {
     const data = await api.login({ email, password });
     if (!data.access_token || !data.user) {
@@ -194,6 +240,7 @@ export function AuthProvider({ children }) {
     await tokenStorage.set(data.access_token);
     const currentUser = (await api.me(data.access_token)).user;
     setUser(currentUser);
+    await refreshEntitlements(data.access_token);
     try { await refreshProfile(data.access_token); } catch (error) { }
     try { await refreshToday(); } catch (error) { }
     return currentUser;
@@ -245,7 +292,18 @@ export function AuthProvider({ children }) {
     addFood,
     addWorkout,
     addSleep,
-  }), [user, profile, profileLoading, profileError, loading, updateProfile, nutrition, nutritionLoading, nutritionError, refreshNutrition, calculateNutrition, today, todayLoading, todayError, refreshToday, recommendations, recommendationsLoading, recommendationsError, refreshRecommendations, getRecommendationHistory, getAIUsage, addWater, addFood, addWorkout, addSleep]);
+    entitlements,
+    plan: entitlements.plan,
+    isFree: entitlements.plan === 'FREE',
+    isPersonal: entitlements.plan === 'PERSONAL',
+    isPremium: entitlements.plan === 'PREMIUM',
+    features: entitlements.features,
+    entitlementsLoading,
+    entitlementsError,
+    hasFeature,
+    refreshEntitlements,
+    denyFeature,
+  }), [user, profile, profileLoading, profileError, loading, updateProfile, nutrition, nutritionLoading, nutritionError, refreshNutrition, calculateNutrition, today, todayLoading, todayError, refreshToday, recommendations, recommendationsLoading, recommendationsError, refreshRecommendations, getRecommendationHistory, getAIUsage, addWater, addFood, addWorkout, addSleep, entitlements, entitlementsLoading, entitlementsError, refreshEntitlements, denyFeature, hasFeature]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

@@ -7,6 +7,7 @@ import AppText from '../../components/ui/AppText';
 import colors from '../../constants/colors';
 import GlassCard from '../../components/ui/GlassCard';
 import PrimaryButton from '../../components/ui/PrimaryButton';
+import LockedFeature from '../../components/ui/LockedFeature';
 import { useAuth } from '../../context/AuthContext';
 import { MEAL_TYPES } from '../../services/recommendations';
 
@@ -41,7 +42,9 @@ function RecommendationCard({ recommendation, embedded = false }) {
 
 export default function AI() {
   const insets = useSafeAreaInsets();
-  const { user, recommendations, recommendationsLoading, recommendationsError, refreshRecommendations, getRecommendationHistory, getAIUsage } = useAuth();
+  const { user, recommendations, recommendationsLoading, recommendationsError, refreshRecommendations, getRecommendationHistory, getAIUsage, hasFeature, features, entitlementsLoading, entitlementsError, refreshEntitlements, denyFeature } = useAuth();
+  const [accessDenied, setAccessDenied] = useState(false);
+  const [requiredPlan, setRequiredPlan] = useState('Personal or Premium required');
   const [history, setHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState(null);
@@ -51,6 +54,10 @@ export default function AI() {
   const [expandedGenerationId, setExpandedGenerationId] = useState(null);
   const historyRequestId = useRef(0);
   const usageRequestId = useRef(0);
+  const entitlementsLoadingRef = useRef(entitlementsLoading);
+  const entitlementRefreshInFlight = useRef(false);
+  entitlementsLoadingRef.current = entitlementsLoading;
+  const aiEnabled = features?.ai === true;
   const recommendationList = recommendations?.recommendations || [];
   const dailyContext = recommendations?.dailyContext;
   const hasResults = recommendationList.length > 0;
@@ -93,24 +100,35 @@ export default function AI() {
     setUsage(null);
     setUsageError(null);
     setExpandedGenerationId(null);
-    if (user) {
+    setAccessDenied(false);
+    setRequiredPlan('Personal or Premium required');
+    if (user && aiEnabled) {
       loadHistory();
       loadUsage();
     } else {
       setHistoryLoading(false);
       setUsageLoading(false);
     }
-  }, [user, loadHistory, loadUsage]);
+  }, [user, aiEnabled, loadHistory, loadUsage]);
 
   useFocusEffect(useCallback(() => {
-    if (user) loadUsage();
-  }, [user, loadUsage]));
+    if (!user || entitlementsLoadingRef.current || entitlementRefreshInFlight.current) return;
+    entitlementRefreshInFlight.current = true;
+    refreshEntitlements().finally(() => {
+      entitlementRefreshInFlight.current = false;
+    });
+  }, [user, refreshEntitlements]));
 
   const generateRecommendations = async () => {
+    if (!hasFeature('ai')) return;
     try {
       await refreshRecommendations();
       await Promise.all([loadHistory(), loadUsage()]);
     } catch (error) {
+      if (denyFeature('ai', error)) {
+        setRequiredPlan(error.code === 'FEATURE_REQUIRES_PREMIUM' ? 'Premium subscription required' : 'Personal or Premium required');
+        setAccessDenied(true);
+      }
       // The existing recommendation error state remains the source of truth for generation failures.
     }
   };
@@ -122,6 +140,18 @@ export default function AI() {
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? 'Date unavailable' : date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
   };
+
+  if (entitlementsLoading) {
+    return <LockedFeature loading title="AI Health Assistant" description="Unlock AI-powered health assistance and personalized recommendations." />;
+  }
+
+  if (entitlementsError) {
+    return <LockedFeature title="AI Health Assistant" description="We couldn't verify your subscription right now." requirementText="" actionTitle="Try Again" onAction={refreshEntitlements} />;
+  }
+
+  if (accessDenied || !hasFeature('ai')) {
+    return <LockedFeature title="AI Health Assistant" description="Unlock AI-powered health assistance and personalized recommendations." requirementText={requiredPlan} />;
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>

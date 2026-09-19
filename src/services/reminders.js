@@ -11,7 +11,11 @@ const WEEKDAYS = { sunday: 1, monday: 2, tuesday: 3, wednesday: 4, thursday: 5, 
 let notificationsModule;
 
 function notificationsAvailable() {
-  return Constants.appOwnership !== 'expo';
+  return true;
+}
+
+function remoteNotificationsAvailable() {
+  return Platform.OS !== 'web' && Constants.appOwnership !== 'expo';
 }
 
 async function getNotifications() {
@@ -79,7 +83,7 @@ async function requestNotificationPermission() {
     if (!Notifications) return { granted: false, status: 'expo-go-disabled' };
     if (Platform.OS === 'android') await ensureNotificationChannel();
     const current = await Notifications.getPermissionsAsync();
-    if (current.granted) return current;
+    if (current.granted || current.canAskAgain === false) return current;
     return Notifications.requestPermissionsAsync();
   } catch (error) {
     return { granted: false, status: 'unavailable' };
@@ -95,7 +99,7 @@ function parseTime(value) {
 }
 
 function normalizeWeekday(value) {
-  if (typeof value === 'number' && value >= 1 && value <= 7) return value;
+  if (typeof value === 'number' && value >= 0 && value <= 6) return value + 1;
   const text = String(value || '').toLowerCase();
   return WEEKDAYS[text] || WEEKDAYS[text.slice(0, 3)] || null;
 }
@@ -109,7 +113,7 @@ function weekdayValues(repeatDays) {
   return [...new Set(values.map(normalizeWeekday).filter(Boolean))];
 }
 
-function onceTrigger(reminder, hour, minute) {
+function onceTrigger(Notifications, reminder, hour, minute) {
   const startDate = reminder.start_date ? new Date(`${reminder.start_date}T${String(reminder.reminder_time).slice(0, 5)}:00`) : new Date();
   if (Number.isNaN(startDate.getTime())) return null;
   if (!reminder.start_date && startDate.getTime() <= Date.now()) startDate.setDate(startDate.getDate() + 1);
@@ -149,7 +153,7 @@ async function scheduleReminderNotification(userId, reminder) {
   };
   let triggers = [];
   if (reminder.repeat_type === 'once') {
-    const trigger = onceTrigger(reminder, time.hour, time.minute);
+    const trigger = onceTrigger(Notifications, reminder, time.hour, time.minute);
     if (trigger) triggers = [trigger];
   } else if (reminder.repeat_type === 'daily') {
     triggers = [{ type: Notifications.SchedulableTriggerInputTypes.DAILY, hour: time.hour, minute: time.minute }];
@@ -200,10 +204,31 @@ async function updateReminder(id, data) {
   return api.updateReminder(token, id, data);
 }
 
+async function patchReminder(id, data) {
+  const token = await tokenStorage.get();
+  if (!token) throw new Error('Authentication is required to manage reminders.');
+  return api.patchReminder(token, id, data);
+}
+
 async function deleteReminder(id) {
   const token = await tokenStorage.get();
   if (!token) throw new Error('Authentication is required to manage reminders.');
   return api.deleteReminder(token, id);
+}
+
+async function registerPushDevice() {
+  if (!remoteNotificationsAvailable()) return { registered: false, status: 'expo-go-disabled' };
+  const Notifications = await getNotifications();
+  if (!Notifications) return { registered: false, status: 'unavailable' };
+  const permission = await requestNotificationPermission();
+  if (!permission.granted) return { registered: false, status: permission.status || 'denied' };
+  const projectId = Constants?.expoConfig?.extra?.eas?.projectId || Constants?.easConfig?.projectId;
+  if (!projectId) return { registered: false, status: 'project-id-missing' };
+  const token = await tokenStorage.get();
+  if (!token) return { registered: false, status: 'unauthenticated' };
+  const pushToken = await Notifications.getExpoPushTokenAsync({ projectId });
+  await api.registerDevice(token, { device_token: pushToken.data, platform: Platform.OS, app_version: Constants.expoConfig?.version || null });
+  return { registered: true, status: 'registered' };
 }
 
 export {
@@ -216,6 +241,8 @@ export {
   listReminders,
   reconcileReminderNotifications,
   requestNotificationPermission,
+  registerPushDevice,
+  patchReminder,
   scheduleReminderNotification,
   updateReminder,
 };

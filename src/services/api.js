@@ -3,13 +3,14 @@ import { API_BASE_URL } from '../constants/api';
 const REQUEST_TIMEOUT_MS = 15000;
 
 class ApiError extends Error {
-  constructor(message, status, code, fields, responseBody) {
+  constructor(message, status, code, fields, responseBody, requiredPlan) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
     this.fields = fields || {};
     this.responseBody = responseBody || '';
+    this.requiredPlan = requiredPlan || null;
   }
 }
 
@@ -73,7 +74,7 @@ async function request(path, { method = 'GET', body, token } = {}) {
   if (!response.ok || payload?.success === false) {
     logRequestFailure(path, response, responseBody);
     const error = payload?.error || {};
-    throw new ApiError(error.message || `Request failed with HTTP ${response.status}.`, response.status, error.code, error.fields, sanitizeResponseBody(responseBody));
+    throw new ApiError(error.message || `Request failed with HTTP ${response.status}.`, response.status, error.code, error.fields, sanitizeResponseBody(responseBody), error.required_plan);
   }
 
   if (!payload?.success || payload.data === undefined) {
@@ -99,7 +100,13 @@ const api = {
   getReminders: (token) => request('/reminders', { token }),
   createReminder: (token, data) => request('/reminders', { method: 'POST', body: data, token }),
   updateReminder: (token, id, data) => request(`/reminders/${encodeURIComponent(id)}`, { method: 'PUT', body: data, token }),
+  patchReminder: (token, id, data) => request(`/reminders/${encodeURIComponent(id)}`, { method: 'PATCH', body: data, token }),
   deleteReminder: (token, id) => request(`/reminders/${encodeURIComponent(id)}`, { method: 'DELETE', token }),
+  getNotifications: (token) => request('/notifications', { token }),
+  markNotificationRead: (token, id) => request(`/notifications/read?id=${encodeURIComponent(id)}`, { method: 'PATCH', token }),
+  registerDevice: (token, data) => request('/notifications/device', { method: 'POST', body: data, token }),
+  getSettings: (token) => request('/user/settings', { token }),
+  updateSettings: (token, data) => request('/user/settings', { method: 'PUT', body: data, token }),
   getTodayHealth: (token) => request('/health/today', { token }),
   getHealthStreak: (token) => {
     const detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -134,9 +141,13 @@ const api = {
   deleteWorkout: (token, id) => request(`/health/workouts?id=${encodeURIComponent(id)}`, { method: 'DELETE', token }),
   getSleep: (token) => request('/health/sleep', { token }),
   addSleep: (token, data) => request('/health/sleep', { method: 'POST', body: data, token }),
+  updateSleep: (token, id, data) => request(`/health/sleep?id=${encodeURIComponent(id)}`, { method: 'PUT', body: data, token }),
+  deleteSleep: (token, id) => request(`/health/sleep?id=${encodeURIComponent(id)}`, { method: 'DELETE', token }),
+  getSleepHistory: (token, date) => request(`/health/sleep/history${date ? `?date=${encodeURIComponent(date)}` : ''}`, { token }),
   getSubscriptionPlans: (token) => request('/subscription/plans', { token }),
   getCurrentSubscription: (token) => request('/subscription/current', { token }),
   getSubscriptionFeatures: (token) => request('/subscription/features', { token }),
+  getEntitlements: (token) => request('/subscription/entitlements', { token }),
   createSubscription: (token, planCode) => request('/subscription/create', { method: 'POST', body: { plan_code: planCode }, token }),
   cancelSubscription: (token) => request('/subscription/cancel', { method: 'POST', token }),
 };
