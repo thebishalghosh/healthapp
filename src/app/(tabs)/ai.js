@@ -288,15 +288,15 @@ export default function AI() {
   };
 
   if (entitlementsLoading) {
-    return <LockedFeature loading title="AI Health Assistant" description="Unlock AI-powered health assistance and personalized recommendations." />;
+    return <LockedFeature loading title="Life Logic Assistant" description="Unlock AI-powered health assistance and personalized recommendations." />;
   }
 
   if (entitlementsError) {
-    return <LockedFeature title="AI Health Assistant" description="We couldn't verify your subscription right now." requirementText="" actionTitle="Try Again" onAction={refreshEntitlements} />;
+    return <LockedFeature title="Life Logic Assistant" description="We couldn't verify your subscription right now." requirementText="" actionTitle="Try Again" onAction={refreshEntitlements} />;
   }
 
   if (accessDenied || !hasFeature('ai')) {
-    return <LockedFeature title="AI Health Assistant" description="Unlock AI-powered health assistance and personalized recommendations." requirementText={requiredPlan} />;
+    return <LockedFeature title="Life Logic Assistant" description="Unlock AI-powered health assistance and personalized recommendations." requirementText={requiredPlan} />;
   }
 
   return (
@@ -305,8 +305,8 @@ export default function AI() {
         refreshControl={<RefreshControl refreshing={recommendationsLoading || historyLoading || usageLoading} onRefresh={refreshAll} tintColor={colors.primary} />}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 128 }]}
       >
-        <AppText style={styles.eyebrow}>INTELLIGENT WELLNESS</AppText><AppText weight="bold" size={30}>HealthAI</AppText><AppText style={styles.subtitle}>Your personal health companion.</AppText>
-        <GlassCard style={styles.hero}><View style={styles.heroIcon}><Ionicons name="sparkles" size={26} color={colors.primary} /></View><AppText weight="bold" size={24} style={styles.heroTitle}>Ask HealthAI</AppText><AppText style={styles.heroText}>Get personalized meal recommendations based on your health profile and nutrition targets.</AppText><View style={styles.topicRow}>{['Nutrition', 'Fitness', 'Sleep', 'Habits'].map((topic, index) => <View style={styles.topic} key={topic}><Ionicons name={['nutrition-outline', 'fitness-outline', 'moon-outline', 'leaf-outline'][index]} size={16} color={colors.primary} /><AppText style={styles.topicText}>{topic}</AppText></View>)}</View><PrimaryButton title={hasResults ? 'Regenerate recommendations' : 'Generate recommendations'} onPress={generateRecommendations} loading={recommendationsLoading} disabled={recommendationsLoading} style={styles.generateButton} /></GlassCard>
+        <AppText style={styles.eyebrow}>INTELLIGENT WELLNESS</AppText><AppText weight="bold" size={30}>Life Logic</AppText><AppText style={styles.subtitle}>Your personal health companion.</AppText>
+        <GlassCard style={styles.hero}><View style={styles.heroIcon}><Ionicons name="sparkles" size={26} color={colors.primary} /></View><AppText weight="bold" size={24} style={styles.heroTitle}>Ask Life Logic</AppText><AppText style={styles.heroText}>Get personalized meal recommendations based on your health profile and nutrition targets.</AppText><View style={styles.topicRow}>{['Nutrition', 'Fitness', 'Sleep', 'Habits'].map((topic, index) => <View style={styles.topic} key={topic}><Ionicons name={['nutrition-outline', 'fitness-outline', 'moon-outline', 'leaf-outline'][index]} size={16} color={colors.primary} /><AppText style={styles.topicText}>{topic}</AppText></View>)}</View><PrimaryButton title={hasResults ? 'Regenerate recommendations' : 'Generate recommendations'} onPress={generateRecommendations} loading={recommendationsLoading} disabled={recommendationsLoading} style={styles.generateButton} /></GlassCard>
 
         <GlassCard style={styles.scannerCard}>
           {!scannerOpen ? (
@@ -451,7 +451,7 @@ export default function AI() {
           )}
         </GlassCard>
 
-        {recommendationsLoading && !hasResults ? <GlassCard style={styles.statusCard}><ActivityIndicator color={colors.primary} /><AppText weight="semibold" style={styles.statusTitle}>Creating your recommendations...</AppText><AppText style={styles.statusText}>HealthAI is reviewing your saved goals and nutrition targets.</AppText></GlassCard> : null}
+        {recommendationsLoading && !hasResults ? <GlassCard style={styles.statusCard}><ActivityIndicator color={colors.primary} /><AppText weight="semibold" style={styles.statusTitle}>Creating your recommendations...</AppText><AppText style={styles.statusText}>Life Logic is reviewing your saved goals and nutrition targets.</AppText></GlassCard> : null}
         {recommendationsError && !recommendationsLoading ? <GlassCard style={styles.statusCard}><AppText weight="semibold" style={styles.statusTitle}>We couldn't load your recommendations.</AppText><AppText style={styles.statusText}>{recommendationsError.message || 'Please check your connection and try again.'}</AppText><PrimaryButton title="Retry" onPress={generateRecommendations} style={styles.retryButton} /></GlassCard> : null}
 
         {dailyContext ? <GlassCard style={styles.contextCard}><AppText weight="semibold" size={18}>Today's nutrition context</AppText><View style={styles.contextGrid}><NutritionMetric label="CALORIE TARGET" value={dailyContext.caloriesTarget} unit="kcal" /><NutritionMetric label="CALORIES LEFT" value={dailyContext.caloriesRemaining} unit="kcal" /><NutritionMetric label="PROTEIN TARGET" value={dailyContext.proteinTarget} unit="g" /><NutritionMetric label="PROTEIN LEFT" value={dailyContext.proteinRemaining} unit="g" /></View></GlassCard> : null}

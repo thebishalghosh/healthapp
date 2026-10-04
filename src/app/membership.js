@@ -2,6 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { Alert, RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import AppText from '../components/ui/AppText';
 import GlassCard from '../components/ui/GlassCard';
 import GradientBackground from '../components/ui/GradientBackground';
@@ -21,6 +22,51 @@ function planCode(plan) {
 
 function isActive(subscription) {
   return ['active', 'authenticated'].includes(String(subscription?.status || '').toLowerCase());
+}
+
+const FEATURE_DETAILS = {
+  ai: { name: 'AI Health Assistant', description: 'Generate personalized meal recommendations.', icon: 'sparkles-outline', category: 'AI & INSIGHTS' },
+  ai_food_recommendations: { name: 'AI Food Recommendations', description: 'Explore meal ideas tailored to your goals.', icon: 'restaurant-outline', category: 'AI & INSIGHTS' },
+  ai_recommendation_history: { name: 'Recommendation History', description: 'Review your previous recommendations.', icon: 'time-outline', category: 'AI & INSIGHTS' },
+  ai_usage: { name: 'AI Usage', description: 'Keep track of your AI activity.', icon: 'analytics-outline', category: 'AI & INSIGHTS' },
+  nutrition: { name: 'Nutrition Tracking', description: 'Review your nutrition targets and intake.', icon: 'nutrition-outline', category: 'HEALTH TRACKING' },
+  water: { name: 'Water Tracking', description: 'Track your daily hydration.', icon: 'water-outline', category: 'HEALTH TRACKING' },
+  hydration: { name: 'Hydration Tracking', description: 'Track your daily water intake.', icon: 'water-outline', category: 'HEALTH TRACKING' },
+  workout: { name: 'Workout Tracking', description: 'Monitor your activity and workouts.', icon: 'fitness-outline', category: 'HEALTH TRACKING' },
+  workouts: { name: 'Workout Tracking', description: 'Monitor your activity and workouts.', icon: 'fitness-outline', category: 'HEALTH TRACKING' },
+  sleep: { name: 'Sleep Tracking', description: 'Keep a record of your sleep.', icon: 'moon-outline', category: 'HEALTH TRACKING' },
+  health_score: { name: 'Health Score', description: 'Understand your daily health progress.', icon: 'heart-outline', category: 'PROGRESS & MOTIVATION' },
+  streaks: { name: 'Health Streaks', description: 'Build consistency with healthy routines.', icon: 'flame-outline', category: 'PROGRESS & MOTIVATION' },
+  streak: { name: 'Health Streaks', description: 'Build consistency with healthy routines.', icon: 'flame-outline', category: 'PROGRESS & MOTIVATION' },
+  reminders: { name: 'Health Reminders', description: 'Stay on track with daily routines.', icon: 'notifications-outline', category: 'PROGRESS & MOTIVATION' },
+};
+
+function featureDetails(key) {
+  const normalizedKey = String(key).toLowerCase();
+  const known = FEATURE_DETAILS[normalizedKey];
+  if (known) return known;
+  const name = String(key).replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return { name: name.replace(/\b\w/g, (letter) => letter.toUpperCase()), description: 'Included with your membership.', icon: 'checkmark-circle-outline', category: 'MORE FOR YOUR WELLBEING' };
+}
+
+function groupFeatures(features) {
+  const groups = new Map();
+  Object.keys(features).filter((feature) => features[feature]).forEach((feature) => {
+    const details = featureDetails(feature);
+    if (!groups.has(details.category)) groups.set(details.category, []);
+    groups.get(details.category).push({ key: feature, ...details });
+  });
+  return [...groups.entries()];
+}
+
+function FeatureRow({ feature, isLast }) {
+  return <View style={[styles.featureRow, !isLast && styles.featureDivider]}>
+    <View style={styles.featureIcon}><Ionicons name={feature.icon} size={17} color={colors.primary} /></View>
+    <View style={styles.featureCopy}>
+      <AppText weight="semibold" style={styles.featureName}>{feature.name}</AppText>
+      <AppText style={styles.featureDescription}>{feature.description}</AppText>
+    </View>
+  </View>;
 }
 
 export default function Membership() {
@@ -45,6 +91,7 @@ export default function Membership() {
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const currentCode = planCode(membership.subscription?.plan || membership.subscription);
+  const includedFeatureGroups = groupFeatures(membership.features);
   const subscribe = async (code) => {
     if (processingPlan || cancelling || code === currentCode) return;
     setProcessingPlan(code);
@@ -113,7 +160,13 @@ export default function Membership() {
         {message ? <GlassCard style={[styles.message, message.type === 'error' && styles.error, message.type === 'success' && styles.success]}><AppText style={styles.messageText}>{message.text}</AppText></GlassCard> : null}
         <PrimaryButton title="Refresh Status" onPress={refreshStatus} loading={refreshing} disabled={refreshing || Boolean(processingPlan) || cancelling} style={styles.refreshButton} />
         <GlassCard style={styles.currentCard}><AppText style={styles.eyebrow}>CURRENT PLAN</AppText><AppText weight="bold" size={24}>{currentCode || 'FREE'}</AppText><AppText style={styles.muted}>{membership.subscription?.status || 'active'}</AppText>{currentCode !== 'FREE' ? <PrimaryButton title="Cancel Subscription" onPress={confirmCancellation} loading={cancelling} disabled={cancelling || Boolean(processingPlan)} style={styles.cancel} /> : null}</GlassCard>
-        {Object.keys(membership.features).filter((feature) => membership.features[feature]).length ? <GlassCard style={styles.featuresCard}><AppText style={styles.eyebrow}>INCLUDED FEATURES</AppText><AppText style={styles.featureText}>{Object.keys(membership.features).filter((feature) => membership.features[feature]).join(', ')}</AppText></GlassCard> : null}
+        {includedFeatureGroups.length ? <GlassCard style={styles.featuresCard}>
+          <AppText style={styles.eyebrow}>WHAT'S INCLUDED</AppText>
+          {includedFeatureGroups.map(([category, features]) => <View key={category} style={styles.featureCategory}>
+            <AppText style={styles.featureCategoryTitle}>{category}</AppText>
+            <View style={styles.featureList}>{features.map((feature, index) => <FeatureRow key={feature.key} feature={feature} isLast={index === features.length - 1} />)}</View>
+          </View>)}
+        </GlassCard> : null}
         {membership.plans.filter((plan) => ['PERSONAL', 'PREMIUM'].includes(planCode(plan))).map((plan) => { const code = planCode(plan); const isCurrent = code === currentCode; return <GlassCard key={code} style={styles.planCard}><View style={styles.planHeader}><View><AppText style={styles.eyebrow}>{code}</AppText><AppText weight="bold" size={23}>{plan.name || code}</AppText></View>{isCurrent ? <AppText weight="semibold" style={styles.currentLabel}>CURRENT</AppText> : null}</View><AppText style={styles.description}>{plan.description || 'Health features for your routine.'}</AppText><AppText weight="bold" size={22}>{money(plan)}</AppText><AppText style={styles.muted}>Billing: {plan.billing_period || 'period unavailable'}</AppText><PrimaryButton title={isCurrent ? 'Current plan' : `Subscribe to ${code}`} onPress={() => subscribe(code)} loading={processingPlan === code} disabled={isCurrent || Boolean(processingPlan) || cancelling} style={styles.button} /></GlassCard>; })}
         {!loading && !membership.plans.length ? <AppText style={styles.muted}>No subscription plans are available right now.</AppText> : null}
       </ScrollView>
@@ -136,7 +189,15 @@ const styles = StyleSheet.create({
   eyebrow: { color: colors.secondaryText, fontSize: 10, letterSpacing: 1.2, marginBottom: 5 },
   currentLabel: { color: colors.success, fontSize: 11 },
   description: { color: colors.secondaryText, lineHeight: 20, marginVertical: 14 },
-  featureText: { color: colors.text, lineHeight: 20 },
+  featureCategory: { marginTop: 15 },
+  featureCategoryTitle: { color: colors.secondaryText, fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 8 },
+  featureList: { borderWidth: 1, borderColor: colors.border, borderRadius: 18, backgroundColor: colors.glassLight, paddingHorizontal: 12 },
+  featureRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 13 },
+  featureDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(23,34,29,0.12)' },
+  featureIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: colors.mint, alignItems: 'center', justifyContent: 'center', marginRight: 11 },
+  featureCopy: { flex: 1, minWidth: 0 },
+  featureName: { color: colors.text, fontSize: 14, flexShrink: 1 },
+  featureDescription: { color: colors.secondaryText, fontSize: 12, lineHeight: 17, marginTop: 3 },
   muted: { color: colors.secondaryText, fontSize: 12, marginTop: 4 },
   button: { marginTop: 18 },
   cancel: { marginTop: 16 },

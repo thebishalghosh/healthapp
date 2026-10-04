@@ -98,7 +98,7 @@ export default function EditProfile() {
         <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
             <TouchableOpacity onPress={() => router.back()}><AppText weight="semibold" style={styles.back}>← Back</AppText></TouchableOpacity>
-            <View style={styles.intro}><AppText weight="bold" size={30}>Edit your profile.</AppText><AppText style={styles.subtitle}>Keep your details current so HealthAI can stay personal.</AppText></View>
+            <View style={styles.intro}><AppText weight="bold" size={30}>Edit your profile.</AppText><AppText style={styles.subtitle}>Keep your details current so Life Logic can stay personal.</AppText></View>
             {profileLoading && !profile ? <AppText style={styles.loading}>Loading your saved profile...</AppText> : null}
             <AppText weight="semibold" style={styles.sectionTitle}>Personal information</AppText>
             <Field label="FIRST NAME" placeholder="Your first name" value={fields.firstName} error={errors.firstName} onChange={(value) => updateField('firstName', value)} />

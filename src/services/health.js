@@ -8,9 +8,22 @@ function normalizeToday(payload) {
   const water = source.water || {};
   const workout = source.workout || {};
   const sleep = source.sleep || {};
+  const healthScore = source.health_score || {};
+  const score = numberOrNull(healthScore.score);
 
   return {
     date: source.date || null,
+    healthScore: {
+      score: Number.isFinite(score) ? score : null,
+      components: {
+        nutrition: numberOrNull(healthScore.components?.nutrition),
+        hydration: numberOrNull(healthScore.components?.hydration),
+        workout: numberOrNull(healthScore.components?.workout),
+        sleep: numberOrNull(healthScore.components?.sleep),
+        consistency: numberOrNull(healthScore.components?.consistency),
+      },
+      availableComponents: Array.isArray(healthScore.available_components) ? healthScore.available_components : [],
+    },
     nutrition: {
       caloriesTarget: numberOrNull(nutrition.calories_target),
       caloriesConsumed: numberOrNull(nutrition.calories_consumed),

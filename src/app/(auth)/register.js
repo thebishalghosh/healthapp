@@ -58,7 +58,7 @@ export default function Register() {
       <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <TouchableOpacity onPress={() => router.back()}><AppText weight="semibold" style={styles.back}>← Back</AppText></TouchableOpacity>
-          <View style={styles.intro}><AppText weight="bold" size={30}>Create your account.</AppText><AppText style={styles.subtitle}>Save your progress and make HealthAI personal.</AppText></View>
+          <View style={styles.intro}><AppText weight="bold" size={30}>Create your account.</AppText><AppText style={styles.subtitle}>Save your progress and make Life Logic personal.</AppText></View>
           {inputs.map(([key, label, placeholder]) => <View style={styles.field} key={key}><AppText weight="semibold" style={styles.label}>{label}</AppText><TextInput value={fields[key]} onChangeText={(value) => update(key, value)} autoCapitalize={key === 'email' || key === 'password' ? 'none' : 'words'} keyboardType={key === 'email' ? 'email-address' : 'default'} secureTextEntry={key === 'password'} placeholder={placeholder} placeholderTextColor={colors.tertiaryText} style={styles.input} />{fieldErrors[key] ? <AppText style={styles.fieldError}>{fieldErrors[key]}</AppText> : null}</View>)}
           {error ? <AppText style={styles.error}>{error}</AppText> : null}
           <PrimaryButton title="Create Account  →" onPress={handleSubmit} loading={submitting} disabled={submitting} style={styles.button} />

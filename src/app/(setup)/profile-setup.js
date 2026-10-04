@@ -70,7 +70,7 @@ export default function ProfileSetup() {
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <View style={styles.intro}>
         <AppText weight="bold" size={30} style={styles.title}>Let's understand{"\n"}your body.</AppText>
-        <AppText style={styles.subtitle}>A few details help HealthAI personalize your experience.</AppText>
+        <AppText style={styles.subtitle}>A few details help Life Logic personalize your experience.</AppText>
       </View>
 
       {inputs.map((field) => (

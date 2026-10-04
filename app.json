@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "HealthAppMobile",
+    "name": "Life Logic",
     "slug": "HealthAppMobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -31,6 +31,12 @@
       "expo-secure-store",
       "expo-notifications"
     ],
-    "scheme": "healthapp"
+    "scheme": "healthapp",
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "d0a2741d-e3de-4897-bd3a-d2b4ad289c16"
+      }
+    }
   }
 }

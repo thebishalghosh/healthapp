@@ -1,6 +1,5 @@
 const user = {
   name: 'Bishal',
-  healthScore: 83,
   water: { current: 1.8, goal: 2.5 },
   calories: { current: 1420, goal: 2200 },
   protein: { current: 78, goal: 120 },

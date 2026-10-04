@@ -63,7 +63,7 @@ export default function Welcome() {
       <SafeAreaView style={{ flex: 1 }}>
         <View style={[styles.header, { paddingTop: insets.top, paddingHorizontal: 24 }]}>
           <View style={styles.brandMark}><AppText weight="bold" size={16} style={styles.brandDot}>+</AppText></View>
-          <AppText weight="semibold" size={20}>HealthAI</AppText>
+          <AppText weight="semibold" size={20}>Life Logic</AppText>
         </View>
 
         <View style={{ flex: 1 }}>
