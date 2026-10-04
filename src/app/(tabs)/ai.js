@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import AppText from '../../components/ui/AppText';
@@ -9,6 +10,8 @@ import GlassCard from '../../components/ui/GlassCard';
 import PrimaryButton from '../../components/ui/PrimaryButton';
 import LockedFeature from '../../components/ui/LockedFeature';
 import { useAuth } from '../../context/AuthContext';
+import { api } from '../../services/api';
+import tokenStorage from '../../services/tokenStorage';
 import { MEAL_TYPES } from '../../services/recommendations';
 
 function displayNumber(value) {
@@ -42,7 +45,7 @@ function RecommendationCard({ recommendation, embedded = false }) {
 
 export default function AI() {
   const insets = useSafeAreaInsets();
-  const { user, recommendations, recommendationsLoading, recommendationsError, refreshRecommendations, getRecommendationHistory, getAIUsage, hasFeature, features, entitlementsLoading, entitlementsError, refreshEntitlements, denyFeature } = useAuth();
+  const { user, recommendations, recommendationsLoading, recommendationsError, refreshRecommendations, getRecommendationHistory, getAIUsage, hasFeature, features, entitlementsLoading, entitlementsError, refreshEntitlements, denyFeature, refreshNutrition, refreshToday } = useAuth();
   const [accessDenied, setAccessDenied] = useState(false);
   const [requiredPlan, setRequiredPlan] = useState('Personal or Premium required');
   const [history, setHistory] = useState([]);
@@ -51,6 +54,15 @@ export default function AI() {
   const [usage, setUsage] = useState(null);
   const [usageLoading, setUsageLoading] = useState(false);
   const [usageError, setUsageError] = useState(null);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [scannerError, setScannerError] = useState('');
+  const [scanLoading, setScanLoading] = useState(false);
+  const [scanResults, setScanResults] = useState(null);
+  const [reviewItems, setReviewItems] = useState([]);
+  const [mealType, setMealType] = useState('lunch');
+  const [confirmingMeal, setConfirmingMeal] = useState(false);
+  const [confirmationSuccess, setConfirmationSuccess] = useState(false);
   const [expandedGenerationId, setExpandedGenerationId] = useState(null);
   const historyRequestId = useRef(0);
   const usageRequestId = useRef(0);
@@ -61,6 +73,140 @@ export default function AI() {
   const recommendationList = recommendations?.recommendations || [];
   const dailyContext = recommendations?.dailyContext;
   const hasResults = recommendationList.length > 0;
+  const matchedItems = reviewItems.filter((item) => item.status === 'matched');
+  const unresolvedItems = reviewItems.filter((item) => item.status === 'unresolved');
+
+  const getScannerErrorMessage = useCallback((error) => {
+    if (!error) return 'Something went wrong. Please try again.';
+    if (error.status === 401 || error.code === 'UNAUTHENTICATED') return 'Authentication required. Please sign in again.';
+    if (error.status === 422 || error.code === 'VALIDATION_ERROR') return error.message || 'The selected image or meal details were invalid.';
+    if (error.status === 503 || error.code === 'GEMINI_UNAVAILABLE') return 'AI service is temporarily unavailable. Please try again.';
+    if (error.status === 502 || error.code === 'AI_RESPONSE_INVALID') return 'The scanner could not process this image. Please try again.';
+    if (error.status === 0 || error.code === 'NETWORK_ERROR' || error.code === 'TIMEOUT') return 'We could not reach the server. Please check your connection and try again.';
+    return error.message || 'Something went wrong. Please try again.';
+  }, []);
+
+  const resetScannerState = useCallback(() => {
+    setScannerOpen(false);
+    setSelectedImage(null);
+    setScannerError('');
+    setScanLoading(false);
+    setScanResults(null);
+    setReviewItems([]);
+    setMealType('lunch');
+    setConfirmingMeal(false);
+    setConfirmationSuccess(false);
+  }, []);
+
+  const handleImageSelection = useCallback(async (source) => {
+    setScannerError('');
+    setConfirmationSuccess(false);
+
+    const permissionResult = source === 'camera'
+      ? await ImagePicker.requestCameraPermissionsAsync()
+      : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (permissionResult.status !== 'granted') {
+      setScannerError(source === 'camera' ? 'Camera permission is required to take a photo.' : 'Photo library access is required to choose an image.');
+      return;
+    }
+
+    const pickerResult = source === 'camera'
+      ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], allowsEditing: true, quality: 0.85, aspect: [4, 3] })
+      : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, quality: 0.85, aspect: [4, 3] });
+
+    if (pickerResult.canceled || !pickerResult.assets?.length) {
+      return;
+    }
+
+    const asset = pickerResult.assets[0];
+    setSelectedImage({
+      uri: asset.uri,
+      name: asset.fileName || 'food-photo.jpg',
+      type: asset.mimeType || 'image/jpeg',
+    });
+    setScanResults(null);
+    setReviewItems([]);
+  }, []);
+
+  const handleAnalyzeFood = useCallback(async () => {
+    if (!selectedImage || scanLoading) return;
+
+    const token = await tokenStorage.get();
+    if (!token) {
+      setScannerError('Authentication required. Please sign in again.');
+      return;
+    }
+
+    setScanLoading(true);
+    setScannerError('');
+
+    try {
+      const formData = new FormData();
+      formData.append('image', {
+        uri: selectedImage.uri,
+        name: selectedImage.name,
+        type: selectedImage.type,
+      });
+
+      const response = await api.scanFood(token, formData);
+      const nextItems = (response?.detections || []).map((item, index) => ({
+        ...item,
+        id: `${item.detected_food || 'item'}-${index}-${item.food?.id ?? 'unknown'}`,
+        quantity: Number(item.quantity?.value ?? 0),
+        unit: item.quantity?.unit || 'g',
+      }));
+
+      setScanResults(response);
+      setReviewItems(nextItems);
+      setConfirmationSuccess(false);
+    } catch (error) {
+      setScannerError(getScannerErrorMessage(error));
+    } finally {
+      setScanLoading(false);
+    }
+  }, [getScannerErrorMessage, scanLoading, selectedImage]);
+
+  const updateReviewQuantity = useCallback((id, value) => {
+    setReviewItems((current) => current.map((item) => item.id === id ? { ...item, quantity: Number.isFinite(Number(value)) ? Number(value) : 0 } : item));
+  }, []);
+
+  const handleConfirmMeal = useCallback(async () => {
+    if (!matchedItems.length || confirmingMeal) return;
+
+    setConfirmingMeal(true);
+    setScannerError('');
+
+    try {
+      const token = await tokenStorage.get();
+      if (!token) {
+        setScannerError('Authentication required. Please sign in again.');
+        return;
+      }
+
+      const payload = {
+        meal_type: mealType,
+        items: matchedItems.map((item) => ({
+          food_id: Number(item.food?.id),
+          quantity: Number(item.quantity),
+          unit: item.unit || 'g',
+        })).filter((item) => Number.isFinite(item.food_id) && item.food_id > 0 && Number(item.quantity) > 0),
+      };
+
+      if (!payload.items.length) {
+        setScannerError('There are no valid foods to confirm yet.');
+        return;
+      }
+
+      await api.confirmFoodScan(token, payload);
+      setConfirmationSuccess(true);
+      await Promise.all([refreshNutrition(), refreshToday()]);
+    } catch (error) {
+      setScannerError(getScannerErrorMessage(error));
+    } finally {
+      setConfirmingMeal(false);
+    }
+  }, [confirmingMeal, getScannerErrorMessage, matchedItems, mealType, refreshNutrition, refreshToday]);
 
   const loadHistory = useCallback(async () => {
     const requestId = historyRequestId.current + 1;
@@ -162,6 +308,149 @@ export default function AI() {
         <AppText style={styles.eyebrow}>INTELLIGENT WELLNESS</AppText><AppText weight="bold" size={30}>HealthAI</AppText><AppText style={styles.subtitle}>Your personal health companion.</AppText>
         <GlassCard style={styles.hero}><View style={styles.heroIcon}><Ionicons name="sparkles" size={26} color={colors.primary} /></View><AppText weight="bold" size={24} style={styles.heroTitle}>Ask HealthAI</AppText><AppText style={styles.heroText}>Get personalized meal recommendations based on your health profile and nutrition targets.</AppText><View style={styles.topicRow}>{['Nutrition', 'Fitness', 'Sleep', 'Habits'].map((topic, index) => <View style={styles.topic} key={topic}><Ionicons name={['nutrition-outline', 'fitness-outline', 'moon-outline', 'leaf-outline'][index]} size={16} color={colors.primary} /><AppText style={styles.topicText}>{topic}</AppText></View>)}</View><PrimaryButton title={hasResults ? 'Regenerate recommendations' : 'Generate recommendations'} onPress={generateRecommendations} loading={recommendationsLoading} disabled={recommendationsLoading} style={styles.generateButton} /></GlassCard>
 
+        <GlassCard style={styles.scannerCard}>
+          {!scannerOpen ? (
+            <>
+              <AppText weight="semibold" size={20}>Scan Your Food</AppText>
+              <AppText style={styles.scannerText}>Take a photo and let AI estimate what&apos;s on your plate.</AppText>
+              <PrimaryButton title="Open scanner" onPress={() => setScannerOpen(true)} style={styles.scannerButton} />
+            </>
+          ) : confirmationSuccess ? (
+            <>
+              <View style={styles.successIcon}><Ionicons name="checkmark-circle" size={42} color={colors.primary} /></View>
+              <AppText weight="bold" size={22} style={styles.successTitle}>Meal added successfully</AppText>
+              <AppText style={styles.scannerText}>Your meal log has been saved and the latest nutrition data is refreshing.</AppText>
+              <PrimaryButton title="Return to AI" onPress={resetScannerState} style={styles.scannerButton} />
+            </>
+          ) : scanLoading ? (
+            <View style={styles.loadingWrap}>
+              <ActivityIndicator color={colors.primary} size="small" />
+              <AppText weight="semibold" size={20} style={styles.statusTitle}>Analyzing your food...</AppText>
+              <AppText style={styles.scannerText}>Identifying foods and estimating portions.</AppText>
+            </View>
+          ) : scanResults ? (
+            <>
+              <View style={styles.sectionHeaderRow}>
+                <AppText weight="semibold" size={20}>Review meal</AppText>
+                <Pressable onPress={() => { setSelectedImage(null); setScanResults(null); setReviewItems([]); setScannerError(''); }}>
+                  <AppText style={styles.actionText}>Retake</AppText>
+                </Pressable>
+              </View>
+
+              <AppText weight="semibold" size={16} style={styles.sectionLabel}>Which meal is this?</AppText>
+              <View style={styles.mealTypeRow}>
+                {['breakfast', 'lunch', 'dinner', 'snack'].map((option) => (
+                  <Pressable
+                    key={option}
+                    style={[styles.mealTypeChip, mealType === option && styles.mealTypeChipActive]}
+                    onPress={() => setMealType(option)}
+                  >
+                    <AppText style={[styles.mealTypeChipText, mealType === option && styles.mealTypeChipTextActive]}>{option.charAt(0).toUpperCase() + option.slice(1)}</AppText>
+                  </Pressable>
+                ))}
+              </View>
+
+              {scannerError ? <View style={styles.errorBanner}><AppText style={styles.errorText}>{scannerError}</AppText></View> : null}
+
+              {matchedItems.length ? (
+                <View style={styles.reviewSection}>
+                  <AppText weight="semibold" size={16} style={styles.sectionLabel}>Matched foods</AppText>
+                  {matchedItems.map((item) => (
+                    <View key={item.id} style={styles.reviewItem}>
+                      <View style={styles.reviewHeaderRow}>
+                        <View style={styles.reviewHeaderCopy}>
+                          <AppText weight="semibold" size={18}>{item.food?.name || item.detected_food || 'Food item'}</AppText>
+                          <AppText style={styles.reviewSubLabel}>{item.food?.name ? item.detected_food || item.food.name : 'Detected as a food item'}</AppText>
+                        </View>
+                        <Pressable onPress={() => setReviewItems((current) => current.filter((entry) => entry.id !== item.id))}>
+                          <AppText style={styles.removeText}>Remove</AppText>
+                        </Pressable>
+                      </View>
+
+                      <View style={styles.quantityRow}>
+                        <AppText style={styles.quantityLabel}>Quantity</AppText>
+                        <View style={styles.quantityInputWrap}>
+                          <TextInput
+                            value={String(item.quantity ?? 0)}
+                            onChangeText={(text) => updateReviewQuantity(item.id, text)}
+                            keyboardType="numeric"
+                            style={styles.quantityInput}
+                          />
+                          <AppText style={styles.unitText}>{item.unit || 'g'}</AppText>
+                        </View>
+                      </View>
+
+                      <View style={styles.previewGrid}>
+                        <View style={styles.previewMetric}><AppText style={styles.previewMetricLabel}>Calories</AppText><AppText weight="semibold" style={styles.previewMetricValue}>{displayNumber(item.nutrition?.calories)} kcal</AppText></View>
+                        <View style={styles.previewMetric}><AppText style={styles.previewMetricLabel}>Protein</AppText><AppText weight="semibold" style={styles.previewMetricValue}>{displayNumber(item.nutrition?.protein_g)} g</AppText></View>
+                        <View style={styles.previewMetric}><AppText style={styles.previewMetricLabel}>Carbs</AppText><AppText weight="semibold" style={styles.previewMetricValue}>{displayNumber(item.nutrition?.carbohydrates_g)} g</AppText></View>
+                        <View style={styles.previewMetric}><AppText style={styles.previewMetricLabel}>Fat</AppText><AppText weight="semibold" style={styles.previewMetricValue}>{displayNumber(item.nutrition?.fat_g)} g</AppText></View>
+                        <View style={styles.previewMetric}><AppText style={styles.previewMetricLabel}>Fiber</AppText><AppText weight="semibold" style={styles.previewMetricValue}>{displayNumber(item.nutrition?.fiber_g)} g</AppText></View>
+                        <View style={styles.previewMetric}><AppText style={styles.previewMetricLabel}>Confidence</AppText><AppText weight="semibold" style={styles.previewMetricValue}>{Math.round((item.confidence || 0) * 100)}%</AppText></View>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+
+              {unresolvedItems.length ? (
+                <View style={styles.reviewSection}>
+                  <AppText weight="semibold" size={16} style={styles.sectionLabel}>Unresolved foods</AppText>
+                  {unresolvedItems.map((item) => (
+                    <View key={item.id} style={styles.reviewItem}>
+                      <View style={styles.reviewHeaderRow}>
+                        <View style={styles.reviewHeaderCopy}>
+                          <AppText weight="semibold" size={18}>{item.detected_food || 'Food item'}</AppText>
+                          <AppText style={styles.reviewSubLabel}>Estimated {Number(item.quantity || 0)} {item.unit || 'g'}</AppText>
+                        </View>
+                        <Pressable onPress={() => setReviewItems((current) => current.filter((entry) => entry.id !== item.id))}>
+                          <AppText style={styles.removeText}>Remove</AppText>
+                        </Pressable>
+                      </View>
+                      <AppText style={styles.unresolvedText}>Couldn&apos;t match this food to our nutrition database.</AppText>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+
+              <PrimaryButton title="Confirm Meal" onPress={handleConfirmMeal} loading={confirmingMeal} disabled={!matchedItems.length || confirmingMeal} style={styles.scannerButton} />
+            </>
+          ) : (
+            <>
+              <View style={styles.sectionHeaderRow}>
+                <AppText weight="semibold" size={20}>Scan Your Food</AppText>
+                {selectedImage ? <Pressable onPress={() => setSelectedImage(null)}><AppText style={styles.actionText}>Change photo</AppText></Pressable> : null}
+              </View>
+              {scannerError ? <View style={styles.errorBanner}><AppText style={styles.errorText}>{scannerError}</AppText></View> : null}
+              {selectedImage ? (
+                <>
+                  <Image source={{ uri: selectedImage.uri }} style={styles.previewImage} resizeMode="cover" />
+                  <View style={styles.actionRow}>
+                    <Pressable style={styles.secondaryAction} onPress={() => setSelectedImage(null)}>
+                      <AppText style={styles.secondaryActionText}>Retake / Change Photo</AppText>
+                    </Pressable>
+                    <PrimaryButton title="Analyze Food" onPress={handleAnalyzeFood} loading={scanLoading} disabled={scanLoading} style={styles.primaryAction} />
+                  </View>
+                </>
+              ) : (
+                <>
+                  <AppText style={styles.scannerText}>Take a photo and let AI estimate what&apos;s on your plate.</AppText>
+                  <View style={styles.optionActions}>
+                    <Pressable style={styles.optionButton} onPress={() => handleImageSelection('camera')}>
+                      <Ionicons name="camera-outline" size={18} color={colors.primary} />
+                      <AppText weight="semibold" style={styles.optionButtonText}>Take Photo</AppText>
+                    </Pressable>
+                    <Pressable style={styles.optionButton} onPress={() => handleImageSelection('gallery')}>
+                      <Ionicons name="images-outline" size={18} color={colors.primary} />
+                      <AppText weight="semibold" style={styles.optionButtonText}>Choose from Gallery</AppText>
+                    </Pressable>
+                  </View>
+                </>
+              )}
+            </>
+          )}
+        </GlassCard>
+
         {recommendationsLoading && !hasResults ? <GlassCard style={styles.statusCard}><ActivityIndicator color={colors.primary} /><AppText weight="semibold" style={styles.statusTitle}>Creating your recommendations...</AppText><AppText style={styles.statusText}>HealthAI is reviewing your saved goals and nutrition targets.</AppText></GlassCard> : null}
         {recommendationsError && !recommendationsLoading ? <GlassCard style={styles.statusCard}><AppText weight="semibold" style={styles.statusTitle}>We couldn't load your recommendations.</AppText><AppText style={styles.statusText}>{recommendationsError.message || 'Please check your connection and try again.'}</AppText><PrimaryButton title="Retry" onPress={generateRecommendations} style={styles.retryButton} /></GlassCard> : null}
 
@@ -216,6 +505,46 @@ const styles = StyleSheet.create({
   foodText: { color: colors.text, fontSize: 13, marginLeft: 8, flex: 1 },
   foodQuantity: { color: colors.secondaryText, fontSize: 12 },
   reason: { color: colors.secondaryText, fontSize: 12, lineHeight: 19, marginTop: 16 },
+  scannerCard: { marginTop: 20, backgroundColor: colors.glassMedium, paddingVertical: 20 },
+  scannerText: { color: colors.secondaryText, lineHeight: 20, marginTop: 10 },
+  scannerButton: { marginTop: 18 },
+  sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  actionText: { color: colors.primary, fontSize: 13 },
+  optionActions: { marginTop: 20, gap: 12 },
+  optionButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.34)', gap: 8 },
+  optionButtonText: { color: colors.text },
+  previewImage: { width: '100%', height: 240, borderRadius: 20, marginTop: 18, backgroundColor: colors.background },
+  actionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 18 },
+  secondaryAction: { flex: 1, paddingVertical: 14, borderRadius: 16, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
+  secondaryActionText: { color: colors.primary, fontWeight: '600' },
+  primaryAction: { flex: 1 },
+  loadingWrap: { alignItems: 'center', justifyContent: 'center', paddingVertical: 16 },
+  sectionLabel: { marginTop: 18, marginBottom: 10 },
+  mealTypeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 8 },
+  mealTypeChip: { paddingVertical: 10, paddingHorizontal: 14, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.34)', borderWidth: 1, borderColor: colors.border },
+  mealTypeChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  mealTypeChipText: { color: colors.text, fontSize: 13 },
+  mealTypeChipTextActive: { color: '#fff' },
+  errorBanner: { marginTop: 12, padding: 12, borderRadius: 12, backgroundColor: 'rgba(203, 58, 58, 0.12)', borderWidth: 1, borderColor: 'rgba(203, 58, 58, 0.32)' },
+  errorText: { color: '#a92d2d', lineHeight: 18 },
+  reviewSection: { marginTop: 16 },
+  reviewItem: { marginTop: 12, padding: 14, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.22)', borderWidth: 1, borderColor: colors.border },
+  reviewHeaderRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
+  reviewHeaderCopy: { flex: 1 },
+  reviewSubLabel: { color: colors.secondaryText, fontSize: 12, marginTop: 4 },
+  removeText: { color: colors.primary, fontWeight: '600' },
+  quantityRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 16 },
+  quantityLabel: { color: colors.secondaryText, fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.8 },
+  quantityInputWrap: { flexDirection: 'row', alignItems: 'center', borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: 'rgba(255,255,255,0.26)', paddingHorizontal: 10, minWidth: 110 },
+  quantityInput: { minWidth: 48, color: colors.text, fontSize: 16, paddingVertical: 8, textAlign: 'right' },
+  unitText: { color: colors.secondaryText, fontSize: 14, marginLeft: 8 },
+  previewGrid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 16, gap: 12 },
+  previewMetric: { width: '30%', minWidth: 90, paddingVertical: 10, paddingHorizontal: 8, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.16)' },
+  previewMetricLabel: { color: colors.secondaryText, fontSize: 9, letterSpacing: 0.7, textTransform: 'uppercase' },
+  previewMetricValue: { marginTop: 4, color: colors.text, fontSize: 12 },
+  unresolvedText: { color: colors.secondaryText, marginTop: 10, lineHeight: 20 },
+  successIcon: { alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
+  successTitle: { textAlign: 'center' },
   embeddedRecommendation: { paddingTop: 16, borderTopWidth: 1, borderTopColor: colors.border },
   historyStatus: { marginTop: 12, backgroundColor: colors.glassMedium, alignItems: 'center' },
   historyCard: { marginTop: 12, backgroundColor: colors.glassMedium },

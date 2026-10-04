@@ -85,6 +85,59 @@ async function request(path, { method = 'GET', body, token } = {}) {
   return payload.data;
 }
 
+async function requestMultipart(path, { method = 'POST', formData, token } = {}) {
+  let response;
+  let payload;
+  let responseBody = '';
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      method,
+      signal: controller.signal,
+      headers: {
+        Accept: 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: formData,
+    });
+    responseBody = await response.text();
+    if (responseBody) {
+      try {
+        payload = JSON.parse(responseBody);
+      } catch (error) {
+        logRequestFailure(path, response, responseBody);
+        throw new ApiError(`The server returned an invalid response (HTTP ${response.status}).`, response.status, 'INVALID_RESPONSE', {}, sanitizeResponseBody(responseBody));
+      }
+    }
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    if (error.name === 'AbortError') {
+      throw new ApiError('The server took too long to respond. Please try again.', 0, 'TIMEOUT');
+    }
+    if (!response) {
+      throw new ApiError('Unable to reach the server. Check your connection and try again.', 0, 'NETWORK_ERROR');
+    }
+    throw new ApiError('The server returned an invalid response. Please try again.', response.status, 'INVALID_RESPONSE');
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  if (!response.ok || payload?.success === false) {
+    logRequestFailure(path, response, responseBody);
+    const error = payload?.error || {};
+    throw new ApiError(error.message || `Request failed with HTTP ${response.status}.`, response.status, error.code, error.fields, sanitizeResponseBody(responseBody), error.required_plan);
+  }
+
+  if (!payload?.success || payload.data === undefined) {
+    logRequestFailure(path, response, responseBody);
+    throw new ApiError('The server returned an invalid response. Please try again.', response.status, 'INVALID_RESPONSE');
+  }
+
+  return payload.data;
+}
+
 const api = {
   register: (body) => request('/auth/register', { method: 'POST', body }),
   login: (body) => request('/auth/login', { method: 'POST', body }),
@@ -150,6 +203,8 @@ const api = {
   getEntitlements: (token) => request('/subscription/entitlements', { token }),
   createSubscription: (token, planCode) => request('/subscription/create', { method: 'POST', body: { plan_code: planCode }, token }),
   cancelSubscription: (token) => request('/subscription/cancel', { method: 'POST', token }),
+  scanFood: (token, formData) => requestMultipart('/ai/food-scan', { method: 'POST', formData, token }),
+  confirmFoodScan: (token, body) => request('/ai/food-scan/confirm', { method: 'POST', body, token }),
 };
 
 export { ApiError, api };
